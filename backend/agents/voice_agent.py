@@ -27,6 +27,9 @@ from backend.orchestrator.lecture_state import lecture_state
 from backend.websocket.events import EventType, create_event
 from backend.websocket.hub import ws_hub
 
+if config.DEMO_MODE:
+    from backend.demo.mock_microphone import MockMicrophone
+
 logger = logging.getLogger(__name__)
 
 # VAD constants — energy threshold and silence duration are configurable via config.py
@@ -61,6 +64,9 @@ class VoiceAgent:
 
         # TTS engine (lazy-loaded on first speak call)
         self._tts = None
+
+        # Mock microphone used in DEMO_MODE
+        self._mock_mic = None
 
         logger.info(
             "VoiceAgent initialised (DEMO_MODE=%s)", config.DEMO_MODE
@@ -218,10 +224,15 @@ class VoiceAgent:
     def start_listening(self) -> None:
         """Start the background microphone capture + transcription loop.
 
-        In DEMO_MODE this is a no-op; use ``inject_mock_speech`` instead.
+        In DEMO_MODE a ``MockMicrophone`` is started instead of opening the
+        real microphone.  Use ``inject_mock_speech`` to manually inject
+        speech at any time.
         """
         if config.DEMO_MODE:
-            logger.info("VoiceAgent.start_listening: DEMO_MODE — no real mic")
+            logger.info("VoiceAgent.start_listening: DEMO_MODE — starting mock microphone")
+            if self._mock_mic is None:
+                self._mock_mic = MockMicrophone()
+            self._mock_mic.start(self.inject_mock_speech)
             return
         if self._listening:
             logger.warning("VoiceAgent.start_listening: already listening")
@@ -236,7 +247,12 @@ class VoiceAgent:
         logger.info("VoiceAgent: started listening on mic device=%d", config.MIC_DEVICE_INDEX)
 
     def stop_listening(self) -> None:
-        """Signal the background listening thread to stop."""
+        """Signal the background listening thread to stop.
+
+        Also stops the ``MockMicrophone`` timer if running in DEMO_MODE.
+        """
+        if config.DEMO_MODE and self._mock_mic is not None:
+            self._mock_mic.stop()
         self._listening = False
         logger.info("VoiceAgent.stop_listening: signalled")
 
