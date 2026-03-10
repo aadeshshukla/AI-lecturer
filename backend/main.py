@@ -66,6 +66,9 @@ from backend.orchestrator.quota_manager import quota_manager
 from backend.websocket.events import create_event
 from backend.websocket.hub import ws_hub
 
+if config.DEMO_MODE:
+    from backend.demo.mock_students import seed_demo_students
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -86,6 +89,25 @@ knowledge_agent = KnowledgeAgent()
 async def lifespan(app: FastAPI):
     """Startup: initialise database. Shutdown: stop all agents."""
     init_db()
+
+    if config.DEMO_MODE:
+        logger.info("🧪 DEMO MODE ACTIVE — using mock hardware")
+        # Auto-seed demo students so a lecture can start without manual setup
+        try:
+            db_gen = get_db()
+            db = next(db_gen)
+            try:
+                count = seed_demo_students(db)
+                if count:
+                    logger.info("DEMO MODE: seeded %d demo students", count)
+            finally:
+                try:
+                    next(db_gen)
+                except StopIteration:
+                    pass
+        except Exception:
+            logger.exception("DEMO MODE: failed to seed demo students (non-fatal)")
+
     logger.info("AI Autonomous Lecturer backend started.")
     yield
     # Cleanup on shutdown

@@ -31,6 +31,9 @@ from backend.orchestrator.lecture_state import lecture_state
 from backend.websocket.events import EventType, create_event
 from backend.websocket.hub import ws_hub
 
+if config.DEMO_MODE:
+    from backend.demo.mock_camera import MockCamera
+
 logger = logging.getLogger(__name__)
 
 # Rolling-window length for per-student attention scores (in frames).
@@ -389,28 +392,49 @@ class VisionAgent:
     # ------------------------------------------------------------------
 
     def _demo_loop(self) -> None:
-        """Background demo thread: generate mock attention data."""
+        """Background demo thread: generate mock attention data via MockCamera."""
         logger.info("VisionAgent: running in DEMO_MODE")
+        mock_cam = MockCamera()
+        mock_cam.start()
+
         while self.is_running:
             students = list(lecture_state.students.keys())
             if not students:
                 time.sleep(2)
                 continue
 
-            for sid in students:
-                # Assign a realistic random attention score
-                score = random.uniform(0.4, 1.0)
-                self._update_attention(sid, score)
+            # Use MockCamera detections; fall back to lecture_state student IDs
+            # if the mock roster doesn't match registered students yet.
+            detections = mock_cam.read()
+            detected_ids = [d["student_id"] for d in detections if d["present"]]
+            all_mock_ids = {d["student_id"] for d in detections}
 
-                # Randomly mark present (most are present in demo)
-                try:
-                    loop = asyncio.get_event_loop()
-                    loop.call_soon_threadsafe(
-                        loop.create_task,
-                        lecture_state.update_student_presence(sid, True),
-                    )
-                except RuntimeError:
-                    pass
+            for det in detections:
+                sid = det["student_id"]
+                if sid in lecture_state.students:
+                    self._update_attention(sid, det["attention_score"])
+                    try:
+                        loop = asyncio.get_event_loop()
+                        loop.call_soon_threadsafe(
+                            loop.create_task,
+                            lecture_state.update_student_presence(sid, det["present"]),
+                        )
+                    except RuntimeError:
+                        pass
+
+            # For any registered students not covered by MockCamera detections,
+            # assign a random attention score so the Dashboard always shows data.
+            for sid in students:
+                if sid not in all_mock_ids:
+                    self._update_attention(sid, random.uniform(0.4, 0.9))
+                    try:
+                        loop = asyncio.get_event_loop()
+                        loop.call_soon_threadsafe(
+                            loop.create_task,
+                            lecture_state.update_student_presence(sid, True),
+                        )
+                    except RuntimeError:
+                        pass
 
             # Randomly distract one student every 30-60 seconds
             delay = random.uniform(30, 60)
@@ -419,6 +443,8 @@ class VisionAgent:
             if students and self.is_running:
                 victim = random.choice(students)
                 self._emit_distraction_event(victim, 65)
+
+        mock_cam.stop()
 
     async def _demo_scan_attendance(self) -> dict:
         """Return mock attendance results in DEMO_MODE."""
