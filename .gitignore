@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+*.cover
+
+# Environment
+.env
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Frontend build
+frontend/dist/
+frontend/build/
+
+# Data / DB
+data/chroma_db/
+data/lecturer.db
+data/lectures/*
+data/student_photos/*
+data/knowledge_base/*
+!data/lectures/.gitkeep
+!data/student_photos/.gitkeep
+!data/knowledge_base/.gitkeep
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
