@@ -1,6 +1,6 @@
 # AI AUTONOMOUS LECTURER SYSTEM
 ## Complete Project Specification for AI-Assisted Code Generation
-> Feed this document to GitHub Copilot / Claude Opus 4.6 to generate the full codebase.
+> Feed this document to GitHub Copilot to generate the full codebase.
 
 ---
 
@@ -8,41 +8,63 @@
 
 **Goal:** Build an autonomous AI lecturer that can independently deliver lectures to a real classroom. It controls speakers, projector, virtual whiteboard, monitors students via camera, handles Q&A via microphone, and manages classroom behavior — all without human intervention.
 
-**Core Philosophy:** Claude Opus 4.6 is the brain. It reasons, decides, and acts. Every physical output (speech, board writing, slide changes, student warnings) is executed by calling MCP tools. Claude runs in a continuous autonomous loop until the lecture ends.
+**Core Philosophy:** Gemini 2.5 Flash is the brain. It reasons, decides, and acts. Every physical output (speech, board writing, slide changes, student warnings) is executed by calling function tools. Gemini runs in a continuous autonomous loop until the lecture ends.
+
+**Budget:** ₹0 — Every single technology used in this project is either open-source or available on a free tier. No paid APIs, no subscriptions.
 
 ---
 
 ## TECH STACK
 
 ### Primary AI
-- **Orchestrator:** Claude Opus 4.6 via Anthropic API (claude-opus-4-6)
-- **Protocol:** MCP (Model Context Protocol) — Claude calls tools to control everything
+- **Orchestrator:** Google Gemini 2.5 Flash via Google AI Studio API (FREE tier — 250 requests/day)
+- **Protocol:** Gemini Function Calling — Gemini calls tools to control everything
+- **API Key:** Free from https://aistudio.google.com/app/apikey
 
-### Open Source AI Models
-| Model | Purpose | Library |
-|-------|---------|---------|
-| Whisper (openai/whisper) | Speech-to-text (mic input) | openai-whisper |
-| Coqui TTS (tts) | Text-to-speech (speaker output) | TTS (pip) |
-| YOLOv8 (ultralytics) | Real-time face/person detection | ultralytics |
-| DeepFace / FaceNet | Student face recognition & attendance | deepface |
-| BERT (distilbert) | Sentiment/attention classification | transformers |
-| LlamaIndex | RAG over lecture knowledge base | llama-index |
+### Open Source AI Models (All run locally — ₹0)
+| Model | Purpose | Library | License |
+|-------|---------|---------|---------|
+| Whisper (openai/whisper) | Speech-to-text (mic input) | openai-whisper | MIT |
+| Coqui TTS (tts) | Text-to-speech (speaker output) | TTS (pip) | MPL-2.0 |
+| YOLOv8 (ultralytics) | Real-time face/person detection | ultralytics | AGPL-3.0 |
+| DeepFace / FaceNet | Student face recognition & attendance | deepface | MIT |
+| BERT (distilbert) | Sentiment/attention classification | transformers | Apache 2.0 |
+| LlamaIndex | RAG over lecture knowledge base | llama-index | MIT |
 
-### Infrastructure
-| Component | Technology |
-|-----------|-----------|
-| MCP Server | Python FastAPI + MCP SDK |
-| Event Bus | WebSocket (FastAPI WebSockets) |
-| Vector DB | ChromaDB (local, no cloud needed) |
-| Session DB | SQLite (student records, attendance) |
-| Frontend Dashboard | React + Vite |
-| Virtual Board | React + Konva.js (canvas) |
-| Slides | reveal.js (auto-generated HTML) |
-| Projector Output | Browser fullscreen / OBS virtual cam |
+### Infrastructure (All free & open-source)
+| Component | Technology | License |
+|-----------|-----------|---------|
+| Backend Server | Python FastAPI | MIT |
+| Event Bus | WebSocket (FastAPI WebSockets) | MIT |
+| Vector DB | ChromaDB (local, no cloud needed) | Apache 2.0 |
+| Session DB | SQLite (student records, attendance) | Public Domain |
+| Frontend Dashboard | React + Vite | MIT |
+| Virtual Board | React + Konva.js (canvas) | MIT |
+| Slides | reveal.js (auto-generated HTML) | MIT |
+| Projector Output | Browser fullscreen / OBS virtual cam | Free |
 
 ### Language
 - **Backend:** Python 3.11+
 - **Frontend:** React 18 + Vite + TailwindCSS
+
+---
+
+## COST BREAKDOWN (Proving ₹0)
+
+| Component | Cost | Notes |
+|-----------|------|-------|
+| Gemini 2.5 Flash API | ₹0 | Free tier: 250 req/day → enough for 3-5 demos/day |
+| Whisper STT | ₹0 | Runs locally |
+| Coqui TTS | ₹0 | Runs locally |
+| YOLOv8 | ₹0 | Runs locally |
+| DeepFace | ₹0 | Runs locally |
+| BERT/DistilBERT | ₹0 | Runs locally |
+| LlamaIndex + ChromaDB | ₹0 | Runs locally |
+| FastAPI + SQLite | ₹0 | Open source |
+| React + Vite | ₹0 | Open source |
+| **TOTAL** | **₹0** | |
+
+**Free tier math:** One 45-min demo ≈ 50-80 tool calls. Gemini free tier = 250 req/day. That's 3-5 full demos per day, more than enough for 5-6 total demos.
 
 ---
 
@@ -61,13 +83,13 @@ ai-lecturer/
 │   │
 │   ├── orchestrator/
 │   │   ├── __init__.py
-│   │   ├── claude_agent.py       # Claude Opus 4.6 autonomous loop
-│   │   ├── system_prompt.py      # Claude's professor persona & instructions
+│   │   ├── gemini_agent.py       # Gemini 2.5 Flash autonomous loop
+│   │   ├── system_prompt.py      # Gemini's professor persona & instructions
 │   │   └── lecture_state.py      # Shared state across all agents
 │   │
 │   ├── mcp_server/
 │   │   ├── __init__.py
-│   │   ├── server.py             # MCP server setup and tool registry
+│   │   ├── server.py             # Tool registry and execution engine
 │   │   ├── tools/
 │   │   │   ├── __init__.py
 │   │   │   ├── speech_tools.py   # speak(), stop_speaking()
@@ -115,7 +137,7 @@ ai-lecturer/
 │       │   └── StudentView.jsx   # Student-facing alert/Q&A view
 │       │
 │       ├── components/
-│       │   ├── VirtualBoard.jsx  # Konva.js whiteboard (Claude writes here)
+│       │   ├── VirtualBoard.jsx  # Konva.js whiteboard (Gemini writes here)
 │       │   ├── SlideViewer.jsx   # reveal.js slide renderer
 │       │   ├── AttendanceGrid.jsx # Live student attendance grid
 │       │   ├── AlertBanner.jsx   # Student warning display
@@ -139,8 +161,9 @@ ai-lecturer/
 ## ENVIRONMENT VARIABLES (.env)
 
 ```env
-# Anthropic
-ANTHROPIC_API_KEY=your_key_here
+# Google Gemini (FREE — get key from https://aistudio.google.com/app/apikey)
+GOOGLE_API_KEY=your_free_gemini_api_key_here
+GEMINI_MODEL=gemini-2.5-flash
 
 # Server
 BACKEND_PORT=8000
@@ -170,6 +193,9 @@ CHROMA_PATH=./data/chroma_db
 MAX_LECTURE_DURATION=3600         # Max seconds (1 hour)
 LECTURE_LANGUAGE=en
 DEFAULT_DIFFICULTY=intermediate   # beginner / intermediate / advanced
+
+# Demo Mode (set to true to use mock camera/mic — no real hardware needed)
+DEMO_MODE=false
 ```
 
 ---
@@ -178,20 +204,20 @@ DEFAULT_DIFFICULTY=intermediate   # beginner / intermediate / advanced
 
 ---
 
-### 1. MCP SERVER (`backend/mcp_server/server.py`)
+### 1. TOOL REGISTRY (`backend/mcp_server/server.py`)
 
-**Purpose:** Exposes all classroom control actions as MCP tools. Claude calls these autonomously.
+**Purpose:** Exposes all classroom control actions as function tools. Gemini calls these autonomously via function calling.
 
 ```python
 # IMPLEMENT THIS MODULE
 # Requirements:
-# - Use anthropic MCP SDK (pip install anthropic-mcp or mcp)
-# - Register all tools below
+# - Define all tools as Gemini function declarations (JSON schema)
+# - Each tool maps to a Python async function
 # - Each tool must broadcast a WebSocket event after execution
 # - Tools must be async
 # - Tool calls must be logged to database
 
-# TOOLS TO REGISTER:
+# TOOLS TO REGISTER (as Gemini function_declarations):
 tools = [
     "speak",           # Convert text to speech via TTS, play on speakers
     "stop_speaking",   # Interrupt current TTS playback
@@ -212,6 +238,36 @@ tools = [
     "set_difficulty",  # Change lecture complexity level
     "ask_class",       # Ask a question to the whole class, wait for hands
 ]
+
+# GEMINI FUNCTION DECLARATION FORMAT:
+function_declarations = [
+    {
+        "name": "speak",
+        "description": "Convert text to speech and play on classroom speakers",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string", "description": "The text to speak out loud"},
+                "emotion": {"type": "string", "enum": ["neutral", "enthusiastic", "serious", "encouraging"], "description": "Tone of voice"}
+            },
+            "required": ["text"]
+        }
+    },
+    {
+        "name": "write_on_board",
+        "description": "Write text or equation on the virtual whiteboard",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "content": {"type": "string", "description": "Text or LaTeX equation to write"},
+                "position": {"type": "string", "description": "Position: 'auto' or '{x,y}' coordinates"},
+                "style": {"type": "string", "enum": ["normal", "formula", "heading", "example"], "description": "Visual style"}
+            },
+            "required": ["content"]
+        }
+    },
+    # ... define all 18 tools in this format
+]
 ```
 
 **Tool Input/Output Schemas:**
@@ -230,40 +286,69 @@ tools = [
 
 ---
 
-### 2. CLAUDE ORCHESTRATOR (`backend/orchestrator/claude_agent.py`)
+### 2. GEMINI ORCHESTRATOR (`backend/orchestrator/gemini_agent.py`)
 
-**Purpose:** The autonomous brain. Runs in a loop, thinks, calls MCP tools, responds to events.
+**Purpose:** The autonomous brain. Runs in a loop, thinks, calls function tools, responds to events.
 
 ```python
 # IMPLEMENT THIS MODULE
 # Requirements:
-# - Use Anthropic Python SDK
-# - Model: claude-opus-4-6 (claude-opus-4-6)
-# - Tool use mode: required (Claude must always call a tool or end lecture)
+# - Use Google Generative AI Python SDK: pip install google-generativeai
+# - Model: gemini-2.5-flash (FREE tier — 250 requests/day)
+# - Tool use: Gemini function calling (pass function_declarations)
 # - Implement continuous autonomous loop
-# - Feed real-time classroom events into Claude's context
-# - Handle tool call responses and feed results back
-# - Maintain conversation history (sliding window of last 20 turns)
+# - Feed real-time classroom events into Gemini's context
+# - Handle function call responses and feed results back
+# - Maintain conversation history via chat session
 # - Inject classroom status every 30 seconds automatically
+# - IMPORTANT: Track request count to stay within 250/day free limit
 
-# LOOP LOGIC (pseudocode):
-# while lecture_active:
+import google.generativeai as genai
+from google.generativeai.types import content_types
+
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+
+# LOOP LOGIC:
+# model = genai.GenerativeModel(
+#     model_name="gemini-2.5-flash",
+#     tools=[{"function_declarations": function_declarations}],
+#     system_instruction=SYSTEM_PROMPT
+# )
+# chat = model.start_chat()
+# request_count = 0
+#
+# while lecture_active and request_count < 240:  # safety margin from 250 limit
 #     status = get_class_status()
-#     events = get_pending_events()  # questions, disturbances, etc.
+#     events = get_pending_events()
 #     
-#     response = claude.messages.create(
-#         model="claude-opus-4-6",
-#         tools=mcp_tools,
-#         messages=conversation_history + [inject_status(status, events)],
-#         system=SYSTEM_PROMPT
-#     )
+#     message = build_context_message(status, events)
+#     response = chat.send_message(message)
+#     request_count += 1
 #     
-#     for tool_call in response.tool_use_blocks:
-#         result = await execute_mcp_tool(tool_call)
-#         conversation_history.append(tool_result(tool_call.id, result))
+#     # Handle function calls
+#     for part in response.parts:
+#         if hasattr(part, "function_call") and part.function_call:
+#             fn_call = part.function_call
+#             result = await execute_tool(fn_call.name, dict(fn_call.args))
+#             
+#             # Send function result back to Gemini
+#             response = chat.send_message(
+#                 genai.protos.Content(
+#                     parts=[genai.protos.Part(
+#                         function_response=genai.protos.FunctionResponse(
+#                             name=fn_call.name,
+#                             response={"result": result}
+#                         )
+#                     )]
+#                 )
+#             )
+#             request_count += 1
 #     
-#     if response.stop_reason == "end_turn":
-#         break  # Claude decided to end lecture
+#     # Check if Gemini decided to end the lecture
+#     if "end_lecture" in [p.function_call.name for p in response.parts if hasattr(p, "function_call") and p.function_call]:
+#         break
+#     
+#     await asyncio.sleep(2)  # Pace the loop — saves free tier quota
 ```
 
 ---
@@ -300,6 +385,11 @@ BEHAVIOR RULES:
 8. Adjust your pace based on student attention levels
 9. End with end_lecture() when done
 
+EFFICIENCY RULES (Important — we have limited API calls per day):
+10. Batch multiple actions per turn when possible (speak + write_on_board together)
+11. Don't call get_class_status() more than once every 3 minutes
+12. Be concise in your reasoning — focus on tool calls
+
 PERSONALITY:
 - Authoritative but approachable
 - Patient with genuine questions, firm with disruptions
@@ -333,7 +423,7 @@ You have full autonomy. Begin the lecture now.
 #     1. Record until silence (1.5s threshold)
 #     2. Transcribe with Whisper
 #     3. Emit WebSocket event: {"type": "student_speech", "text": transcript, "timestamp": ...}
-#     4. This event gets injected into Claude's next context window
+#     4. This event gets injected into Gemini's next context window
 #   - Use pyaudio for mic capture
 #
 # IMPLEMENTATION NOTES:
@@ -431,7 +521,7 @@ You have full autonomy. Begin the lecture now.
 //   - Receives write commands via WebSocket
 //   - Renders text, equations (KaTeX), and diagrams
 //   - Supports: Text nodes, Arrow nodes, Box nodes, Circle nodes, Line nodes
-//   - Animated appearance (each element fades in as Claude "writes" it)
+//   - Animated appearance (each element fades in as Gemini "writes" it)
 //   - Color coding: definitions=blue, formulas=orange, examples=green, warnings=red
 //   - Clear board: fade out all elements
 //   - Highlight: pulse animation on specified element
@@ -463,7 +553,7 @@ You have full autonomy. Begin the lecture now.
 // LAYOUT: Split into 4 quadrants
 //   TOP-LEFT:    Live camera feed + attention heatmap overlay
 //   TOP-RIGHT:   Attendance grid (photo + name + status per student)
-//   BOTTOM-LEFT: Live transcript feed (what Claude is saying, scrolling)
+//   BOTTOM-LEFT: Live transcript feed (what Gemini is saying, scrolling)
 //   BOTTOM-RIGHT: Controls + alerts log
 //
 // CONTROLS:
@@ -473,6 +563,7 @@ You have full autonomy. Begin the lecture now.
 //   - Topic input field
 //   - Difficulty selector (beginner/intermediate/advanced)
 //   - Duration slider (15 to 90 minutes)
+//   - API Quota indicator: "Remaining: 187/250 requests today"
 //
 // REAL-TIME DATA (WebSocket):
 //   - Transcript updates: append to feed
@@ -480,6 +571,7 @@ You have full autonomy. Begin the lecture now.
 //   - Attendance updates: refresh attendance grid
 //   - Board events: show in activity feed
 //   - Lecture status: update status indicator
+//   - Quota updates: show remaining API calls
 //
 // STYLE: Dark theme, professional UI, green accent for active/present, red for alerts
 ```
@@ -501,7 +593,7 @@ You have full autonomy. Begin the lecture now.
 // ALSO SHOWS:
 //   - Professor status bar at top: "🎓 Professor AI — [SPEAKING] Introduction to Neural Networks"
 //   - Current lecture time elapsed
-//   - Student Q&A alert: when Claude calls on a student, their name flashes
+//   - Student Q&A alert: when Gemini calls on a student, their name flashes
 //   - Subtle animated background (very dark, not distracting)
 //
 // FULL SCREEN BEHAVIOR:
@@ -523,23 +615,25 @@ You have full autonomy. Begin the lecture now.
 #   POST /api/lecture/pause         → pause lecture
 #   POST /api/lecture/resume        → resume lecture
 #   POST /api/lecture/end           → end lecture
-#   GET  /api/lecture/status        → current lecture state
+#   GET  /api/lecture/status        → current lecture state + API quota remaining
 #   GET  /api/students              → list all students
 #   POST /api/students              → add student (with photo upload)
 #   GET  /api/students/{id}         → get student details
 #   POST /api/knowledge/upload      → upload document to knowledge base
 #   GET  /api/attendance/{session}  → get attendance for session
+#   GET  /api/quota                 → remaining Gemini API calls today
 #   WebSocket /ws                   → real-time event stream
 #
 # STARTUP SEQUENCE:
-#   1. Initialize SQLite database
-#   2. Start ChromaDB and ingest knowledge base
-#   3. Load AI models (YOLOv8, DeepFace, Whisper, Coqui TTS)
-#   4. Start MCP server
-#   5. Start Vision Agent background thread
-#   6. Start Voice Agent (STT listener)
-#   7. Start WebSocket hub
-#   8. Ready!
+#   1. Validate GOOGLE_API_KEY is set
+#   2. Initialize SQLite database
+#   3. Start ChromaDB and ingest knowledge base
+#   4. Load AI models (YOLOv8, DeepFace, Whisper, Coqui TTS)
+#   5. Initialize Gemini model with function declarations
+#   6. Start Vision Agent background thread
+#   7. Start Voice Agent (STT listener)
+#   8. Start WebSocket hub
+#   9. Ready!
 #
 # lecture/start REQUEST BODY:
 #   {
@@ -579,6 +673,7 @@ class LectureSession:
     duration_minutes: int
     slides_generated: int
     tool_calls_made: int
+    api_calls_used: int        # Track Gemini API usage
     student_ids: List[str]
 
 # backend/models/event.py
@@ -588,7 +683,7 @@ class ClassroomEvent:
     timestamp: datetime
     data: dict
     handled: bool
-    injected_to_claude: bool
+    injected_to_gemini: bool
 ```
 
 ---
@@ -606,7 +701,7 @@ type WSEvent = {
 // Event types:
 "lecture_started"         // data: { topic, session_id, student_count }
 "lecture_paused"          // data: {}
-"lecture_ended"           // data: { duration_seconds, tool_calls }
+"lecture_ended"           // data: { duration_seconds, tool_calls, api_calls_used }
 "speaking_start"          // data: { text: string }
 "speaking_end"            // data: { duration_ms: number }
 "board_write"             // data: { content, style, position, element_id }
@@ -618,10 +713,11 @@ type WSEvent = {
 "student_distracted"      // data: { student_id, duration_seconds }
 "attendance_updated"      // data: { present: string[], absent: string[] }
 "student_speech"          // data: { transcript: string, student_id?: string }
-"claude_thinking"         // data: {} — Claude is processing
+"gemini_thinking"         // data: {} — Gemini is processing
 "tool_called"             // data: { tool_name, args }
 "tool_result"             // data: { tool_name, result }
 "class_status_update"     // data: { attentive_count, distracted_count, time_elapsed }
+"quota_update"            // data: { used: number, remaining: number, limit: 250 }
 ```
 
 ---
@@ -634,7 +730,7 @@ git clone <repo>
 cd ai-lecturer
 
 # 2. Python dependencies
-pip install anthropic fastapi uvicorn websockets \
+pip install google-generativeai fastapi uvicorn websockets \
             openai-whisper TTS pyaudio sounddevice \
             ultralytics deepface opencv-python \
             transformers sentence-transformers \
@@ -650,19 +746,24 @@ npm install react react-dom react-konva konva react-katex katex \
 python -c "import whisper; whisper.load_model('base')"
 python -c "from ultralytics import YOLO; YOLO('yolov8n.pt')"
 
-# 5. Add students (photos)
+# 5. Get FREE Gemini API Key
+# Go to: https://aistudio.google.com/app/apikey
+# Click "Create API Key" — completely free, no credit card needed
+# Copy the key into your .env file
+
+# 6. Add students (photos)
 # Place student face photos in data/student_photos/{student_id}.jpg
 # Add student records via POST /api/students or directly in SQLite
 
-# 6. Add lecture materials
+# 7. Add lecture materials
 # Drop PDFs, docs, or text files into data/knowledge_base/
 
-# 7. Run
-cp .env.example .env   # add your ANTHROPIC_API_KEY
+# 8. Run
+cp .env.example .env   # add your GOOGLE_API_KEY
 python backend/main.py  # starts backend on port 8000
 cd frontend && npm run dev  # starts frontend on port 5173
 
-# 8. Open:
+# 9. Open:
 #   Dashboard:  http://localhost:5173/
 #   Projector:  http://localhost:5173/projector  (show on projector, F11 fullscreen)
 ```
@@ -674,59 +775,111 @@ cd frontend && npm run dev  # starts frontend on port 5173
 ```
 1. Instructor opens Dashboard → enters topic, duration, difficulty → clicks Start
 2. Backend: creates LectureSession, runs scan_attendance(), builds system prompt
-3. Claude Opus 4.6 starts autonomous loop:
+3. Gemini 2.5 Flash starts autonomous loop:
    
-   TURN 1: Claude calls scan_attendance() → knows who is present
-   TURN 2: Claude calls speak("Good morning class...") + advance_slide()
-   TURN 3: Claude calls write_on_board("Today's Topic: Neural Networks", style="heading")
-   TURN 4: Claude calls speak("Let's start with the basics...")
-   TURN 5: Claude calls write_on_board("f(x) = wx + b", style="formula")
+   TURN 1: Gemini calls scan_attendance() → knows who is present
+   TURN 2: Gemini calls speak("Good morning class...") + advance_slide()
+   TURN 3: Gemini calls write_on_board("Today's Topic: Neural Networks", style="heading")
+   TURN 4: Gemini calls speak("Let's start with the basics...")
+   TURN 5: Gemini calls write_on_board("f(x) = wx + b", style="formula")
    ...
    [30 seconds later — vision agent detects student looking at phone]
    Event injected → "Student s003 has been distracted for 45 seconds"
-   Claude calls warn_student("s003", "Please put your phone away", "mild")
-   Claude calls speak("As I was saying, the gradient is...")
+   Gemini calls warn_student("s003", "Please put your phone away", "mild")
+   Gemini calls speak("As I was saying, the gradient is...")
    ...
    [Student raises hand / speaks into mic]
    STT transcribes: "Can you explain backpropagation?"
-   Event injected → Claude acknowledges and explains
-   Claude calls write_on_board("Backpropagation: ∂L/∂w", style="formula")
-   Claude calls draw_diagram("flowchart", {nodes: ["Input", "Forward", "Loss", "Backward"]})
+   Event injected → Gemini acknowledges and explains
+   Gemini calls write_on_board("Backpropagation: ∂L/∂w", style="formula")
+   Gemini calls draw_diagram("flowchart", {nodes: ["Input", "Forward", "Loss", "Backward"]})
    ...
    [At 80% of duration]
-   Claude calls ask_class("Any final questions?")
-   Claude calls speak("Let me summarize what we covered today...")
-   Claude calls end_lecture()
+   Gemini calls ask_class("Any final questions?")
+   Gemini calls speak("Let me summarize what we covered today...")
+   Gemini calls end_lecture()
 
 4. Session logged to database, attendance finalized, transcript saved
+5. Dashboard shows: "Lecture complete — used 67/250 API calls today"
+```
+
+---
+
+## FREE TIER QUOTA MANAGEMENT
+
+**This is critical since we're on Gemini's free tier (250 requests/day).**
+
+```python
+# backend/orchestrator/quota_manager.py
+# IMPLEMENT THIS MODULE
+
+class QuotaManager:
+    DAILY_LIMIT = 250
+    SAFETY_MARGIN = 10  # Reserve 10 calls for emergencies
+    
+    def __init__(self):
+        self.calls_today = 0
+        self.reset_date = date.today()
+    
+    def can_make_call(self) -> bool:
+        self._check_reset()
+        return self.calls_today < (self.DAILY_LIMIT - self.SAFETY_MARGIN)
+    
+    def record_call(self):
+        self.calls_today += 1
+        # Broadcast quota update via WebSocket
+    
+    def remaining(self) -> int:
+        return self.DAILY_LIMIT - self.calls_today
+    
+    def estimate_calls_for_lecture(self, duration_minutes: int) -> int:
+        # ~1.5 calls per minute of lecture
+        return int(duration_minutes * 1.5)
+    
+    def _check_reset(self):
+        if date.today() > self.reset_date:
+            self.calls_today = 0
+            self.reset_date = date.today()
+
+# OPTIMIZATION STRATEGIES:
+# 1. Batch multiple tool calls per Gemini turn (speak + write together)
+# 2. Increase sleep between loop iterations (2-3 seconds)
+# 3. Only inject class status every 3 minutes instead of 30 seconds
+# 4. Cache knowledge queries — don't re-query same topic
+# 5. Pre-generate lecture outline before starting the loop
 ```
 
 ---
 
 ## KEY IMPLEMENTATION NOTES FOR COPILOT
 
-1. **Claude tool calling:** Use `anthropic.messages.create()` with `tools` parameter. Parse `response.content` for `tool_use` blocks. Each tool call must be followed by a `tool_result` message.
+1. **Gemini function calling:** Use `google.generativeai` SDK. Pass `tools=[{"function_declarations": [...]}]` to `GenerativeModel()`. Parse `response.parts` for `function_call` objects. Send back `function_response` via `chat.send_message()`.
 
-2. **MCP Pattern:** Claude does NOT execute code directly. It calls tool names as strings. Your MCP server maps tool names → Python functions → hardware/UI actions.
+2. **Tool pattern:** Gemini does NOT execute code directly. It returns function call names + arguments as structured data. Your tool registry maps function names → Python functions → hardware/UI actions.
 
-3. **Async everything:** All agents run async. Use `asyncio.gather()` to start all agents. Use `asyncio.Queue` for event passing between agents and Claude.
+3. **Async everything:** All agents run async. Use `asyncio.gather()` to start all agents. Use `asyncio.Queue` for event passing between agents and Gemini.
 
 4. **WebSocket broadcast:** Every action (speak, write, warn, etc.) MUST broadcast a WebSocket event so the frontend updates in real-time.
 
 5. **Thread safety:** Vision Agent and Voice Agent run in threads. Use thread-safe queues to communicate with the async FastAPI event loop. Use `asyncio.run_coroutine_threadsafe()`.
 
-6. **Context window management:** Keep conversation history to last 20 messages. Summarize older content if needed. Always inject latest class status at start of each Claude turn.
+6. **Context management:** Gemini `chat.send_message()` maintains history automatically. Inject latest class status at start of each turn. Keep turns focused and concise to save tokens.
 
-7. **Projector output:** The /projector page is a browser tab. Use window.open() or a second monitor to display it. Claude controls it entirely via WebSocket events — no human needed.
+7. **Projector output:** The /projector page is a browser tab. Use window.open() or a second monitor to display it. Gemini controls it entirely via WebSocket events — no human needed.
 
-8. **Error handling:** If a tool fails (e.g., TTS crash), return error to Claude in tool_result. Claude should handle gracefully and try alternative action.
+8. **Error handling:** If a tool fails (e.g., TTS crash), return error to Gemini in function_response. Gemini should handle gracefully and try alternative action.
 
 9. **Demo mode:** Add `DEMO_MODE=true` env var that uses mock camera/mic data so the system can be demoed without real hardware.
+
+10. **Quota awareness:** ALWAYS check `QuotaManager.can_make_call()` before sending to Gemini. Show remaining quota on Dashboard. Warn instructor if quota is running low.
 
 ---
 
 ## EXPO DEMO CHECKLIST
 
+- [ ] FREE Gemini API key generated at https://aistudio.google.com/app/apikey
+- [ ] .env has valid GOOGLE_API_KEY
+- [ ] Tested quota: run a quick 5-min test lecture to verify API calls work
 - [ ] Student photos registered in database
 - [ ] Knowledge base PDFs loaded (lecture topic material)
 - [ ] Camera tested (face detection working)
@@ -734,11 +887,39 @@ cd frontend && npm run dev  # starts frontend on port 5173
 - [ ] Mic tested (Whisper transcription working)  
 - [ ] Projector connected (browser on /projector URL, fullscreen)
 - [ ] Dashboard open on laptop screen
-- [ ] .env has valid ANTHROPIC_API_KEY
 - [ ] Demo topic chosen and materials in knowledge_base/
 - [ ] "Plant" a volunteer to ask a question or pretend to be distracted
 - [ ] Practice the 3-minute demo flow at least twice
+- [ ] Check remaining Gemini quota before demo day (need ~80 calls per demo)
 
 ---
 
-*This specification is designed to be fed directly to GitHub Copilot or Claude Opus 4.6 to generate production-ready code for each module. Implement modules in this order: MCP Server → Claude Agent → Voice Agent → Vision Agent → Knowledge Agent → Frontend.*
+## FALLBACK PLAN (If Gemini Free Tier Has Issues)
+
+If Google changes the free tier or you hit rate limits on demo day:
+
+**Option A: Switch to Gemini 2.5 Flash-Lite** (1,000 req/day free — more headroom, slightly lower quality)
+```python
+# Just change in .env:
+GEMINI_MODEL=gemini-2.5-flash-lite
+```
+
+**Option B: Switch to local Ollama + Llama 3** (unlimited, needs decent hardware)
+```python
+# pip install openai
+from openai import OpenAI
+client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
+# Requires: brew install ollama && ollama pull llama3:8b
+```
+
+**Option C: Use OpenAI free credits** ($5 free for new accounts)
+```python
+# pip install openai
+from openai import OpenAI
+client = OpenAI(api_key="your_key")
+# Use model="gpt-4o-mini" for cheapest option
+```
+
+---
+
+*This specification is designed to be fed directly to GitHub Copilot to generate production-ready code for each module. Every technology is free or open-source. Implement modules in this order: Tool Registry → Gemini Agent → Voice Agent → Vision Agent → Knowledge Agent → Frontend.*
