@@ -47,8 +47,11 @@ export default function Dashboard() {
     return () => obs.disconnect();
   }, []);
 
+  const [startError, setStartError] = useState('');
+
   // API helpers
   async function handleStart(params) {
+    setStartError('');
     const res = await fetch('/api/lecture/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -56,7 +59,7 @@ export default function Dashboard() {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      alert(err.detail || 'Failed to start lecture');
+      setStartError(err.detail || 'Failed to start lecture');
     }
   }
 
@@ -152,6 +155,9 @@ export default function Dashboard() {
               onResume={handleResume}
               onEnd={handleEnd}
             />
+            {startError && (
+              <p className="mt-2 text-xs text-red-400" role="alert">{startError}</p>
+            )}
           </section>
 
           {/* Knowledge base upload */}

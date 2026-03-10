@@ -144,7 +144,7 @@ export default function VirtualBoard({ elements = [], width = 800, height = 500 
           );
       }
     });
-  }, [elements, width, height]);
+  }, [elements, width]);
 
   return (
     <Stage

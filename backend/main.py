@@ -17,6 +17,7 @@ Exposes:
 """
 
 import asyncio
+import json
 import logging
 import os
 import uuid
@@ -273,15 +274,20 @@ async def end_lecture(db: Session = Depends(get_db)):
     return {"status": "ended"}
 
 
+def _ensure_utc(dt: datetime) -> datetime:
+    """Return *dt* as a UTC-aware datetime, assuming UTC if tzinfo is absent."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 @router.get("/api/lecture/status")
 async def get_lecture_status():
     """Return the current lecture state."""
     session = lecture_state.session
     time_elapsed = 0
     if session and session.started_at:
-        elapsed = datetime.now(timezone.utc) - session.started_at.replace(
-            tzinfo=timezone.utc if session.started_at.tzinfo is None else session.started_at.tzinfo
-        )
+        elapsed = datetime.now(timezone.utc) - _ensure_utc(session.started_at)
         time_elapsed = int(elapsed.total_seconds())
 
     students = list(lecture_state.students.values())
@@ -486,7 +492,6 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             raw = await websocket.receive_text()
             try:
-                import json
                 msg = json.loads(raw)
             except Exception:
                 continue
