@@ -293,10 +293,17 @@ class KnowledgeAgent:
             return []
 
         try:
-            query_embedding = self._embed([query_text])[0]
+            embeddings = self._embed([query_text])
+            if not embeddings:
+                logger.warning("KnowledgeAgent.query: embedding returned empty result")
+                return []
+            query_embedding = embeddings[0]
+
+            # ChromaDB handles n_results exceeding collection size gracefully
+            # (returns all available documents), so we don't need to call count().
             results = self._collection.query(
                 query_embeddings=[query_embedding],
-                n_results=min(top_k, max(1, self._collection.count())),
+                n_results=max(1, top_k),
                 include=["documents", "metadatas", "distances"],
             )
 

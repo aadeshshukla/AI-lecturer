@@ -29,11 +29,10 @@ from backend.websocket.hub import ws_hub
 
 logger = logging.getLogger(__name__)
 
-# VAD constants
-_VAD_CHUNK_DURATION = 0.3       # seconds per audio chunk analysed for energy
-_VAD_ENERGY_THRESHOLD = 500.0   # RMS amplitude; above this = speech present
-_VAD_SILENCE_DURATION = 1.5     # seconds of silence before we stop recording
-_SAMPLE_RATE = 16_000            # Hz expected by Whisper
+# VAD constants — energy threshold and silence duration are configurable via config.py
+# so operators can tune them for different room acoustics without code changes.
+_VAD_CHUNK_DURATION = 0.3   # seconds per audio chunk analysed for energy
+_SAMPLE_RATE = 16_000        # Hz expected by Whisper
 
 
 class VoiceAgent:
@@ -130,6 +129,7 @@ class VoiceAgent:
         done_event = asyncio.Event()
 
         def _synth_and_play() -> None:
+            tmp_path: str | None = None
             try:
                 with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
                     tmp_path = tmp.name
@@ -163,10 +163,11 @@ class VoiceAgent:
             except Exception:
                 logger.exception("VoiceAgent: TTS playback error")
             finally:
-                try:
-                    os.unlink(tmp_path)  # type: ignore[possibly-undefined]
-                except Exception:
-                    pass
+                if tmp_path:
+                    try:
+                        os.unlink(tmp_path)
+                    except Exception:
+                        pass
                 self.is_speaking = False
                 loop.call_soon_threadsafe(done_event.set)
 
@@ -272,7 +273,10 @@ class VoiceAgent:
         logger.info("VoiceAgent: microphone stream opened")
         recording: list[bytes] = []
         silence_chunks = 0
-        max_silence_chunks = int(_VAD_SILENCE_DURATION / _VAD_CHUNK_DURATION)
+        # Use configurable VAD parameters from config.py
+        vad_energy_threshold = config.VAD_ENERGY_THRESHOLD
+        vad_silence_duration = config.VAD_SILENCE_DURATION
+        max_silence_chunks = int(vad_silence_duration / _VAD_CHUNK_DURATION)
         in_speech = False
 
         while self._listening:
@@ -292,7 +296,7 @@ class VoiceAgent:
             samples = _array.array("h", raw)
             rms = (sum(s * s for s in samples) / len(samples)) ** 0.5
 
-            if rms > _VAD_ENERGY_THRESHOLD:
+            if rms > vad_energy_threshold:
                 if not in_speech:
                     logger.debug("VoiceAgent: speech detected (rms=%.0f)", rms)
                     in_speech = True
@@ -334,6 +338,7 @@ class VoiceAgent:
             logger.warning("VoiceAgent: Whisper model not loaded — skipping transcription")
             return
 
+        tmp_path: str | None = None
         try:
             import pyaudio  # type: ignore[import-untyped]
 
@@ -366,10 +371,11 @@ class VoiceAgent:
         except Exception:
             logger.exception("VoiceAgent: transcription error")
         finally:
-            try:
-                os.unlink(tmp_path)  # type: ignore[possibly-undefined]
-            except Exception:
-                pass
+            if tmp_path:
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
 
     async def _emit_speech_event(self, transcript: str) -> None:
         """Enqueue a classroom event and broadcast a WebSocket event.

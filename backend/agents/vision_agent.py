@@ -35,12 +35,11 @@ logger = logging.getLogger(__name__)
 
 # Rolling-window length for per-student attention scores (in frames).
 _ATTENTION_WINDOW = 30
-# Attention threshold below which a student is considered distracted.
-_DISTRACTION_THRESHOLD = 0.3
 # Seconds of continuous low attention before a distraction event is emitted.
 _DISTRACTION_SECONDS = 60.0
 # Seconds between consecutive distraction event emissions for the same student.
 _DISTRACTION_COOLDOWN = 120.0
+# Note: the distraction threshold is read from config.DISTRACTION_THRESHOLD at runtime.
 
 
 class VisionAgent:
@@ -191,28 +190,30 @@ class VisionAgent:
             logger.exception("VisionAgent: YOLO inference error")
             return
 
-        # We map YOLO detections to known students by index (ordinal assignment).
+        # We map YOLO detections to known students by ordinal index.
         # More accurate face recognition is handled by scan_attendance().
+        # We use a flat counter to correctly index across all boxes in the frame.
         detected_ids = []
         students = list(lecture_state.students.keys())
+        detection_counter = 0
 
-        for i, result in enumerate(results):
+        for result in results:
             boxes = result.boxes
             if boxes is None:
                 continue
-            for j, box in enumerate(boxes):
+            for box in boxes:
                 cls = int(box.cls[0]) if box.cls is not None else -1
                 # class 0 = person in COCO
                 if cls != 0:
                     continue
 
-                # Ordinal assignment to known students
-                student_idx = i * len(boxes) + j
-                if student_idx < len(students):
-                    sid = students[student_idx]
+                # Ordinal assignment to known students (flat counter, not nested index)
+                if detection_counter < len(students):
+                    sid = students[detection_counter]
                 else:
-                    sid = f"unknown_{student_idx}"
+                    sid = f"unknown_{detection_counter}"
 
+                detection_counter += 1
                 detected_ids.append(sid)
 
                 # Simple attention heuristic: confidence score as a proxy
@@ -252,9 +253,9 @@ class VisionAgent:
         except RuntimeError:
             pass
 
-        # Distraction timer
+        # Distraction timer — use configurable threshold from config.py
         now = time.monotonic()
-        if avg < _DISTRACTION_THRESHOLD:
+        if avg < config.DISTRACTION_THRESHOLD:
             if self._low_attention_since[student_id] is None:
                 self._low_attention_since[student_id] = now
             elif now - self._low_attention_since[student_id] >= _DISTRACTION_SECONDS:

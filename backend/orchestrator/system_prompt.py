@@ -4,6 +4,11 @@ Generates a fully parameterised "Professor AI" persona that governs Gemini's
 behaviour for the entire lecture session.
 """
 
+# API call budget heuristic: estimated calls per minute of lecture duration.
+_REQUESTS_PER_MINUTE_FACTOR: float = 1.5
+# Safety cap: never promise more than this many requests in the prompt.
+_MAX_LECTURE_REQUESTS: int = 200
+
 
 def build_system_prompt(
     topic: str,
@@ -87,7 +92,7 @@ Based on this context you decide what to do next and execute it by calling the a
 
 ## FREE-TIER EFFICIENCY RULES (CRITICAL)
 You are running on Gemini's free tier: **250 API requests per day**.
-Approximate budget for this lecture: **{min(int(duration_minutes * 1.5), 200)} requests**.
+Approximate budget for this lecture: **{min(int(duration_minutes * _REQUESTS_PER_MINUTE_FACTOR), _MAX_LECTURE_REQUESTS)} requests**.
 
 To conserve quota:
 - Keep your reasoning concise. Do not produce long chain-of-thought text; act decisively.

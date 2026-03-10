@@ -13,6 +13,8 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "")
 GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+# Seconds to sleep between autonomous-loop iterations (conserves free-tier quota).
+GEMINI_LOOP_INTERVAL_SECONDS: float = float(os.getenv("GEMINI_LOOP_INTERVAL_SECONDS", "2.0"))
 
 # ---------------------------------------------------------------------------
 # Server
@@ -36,18 +38,24 @@ CAMERA_FPS: int = int(os.getenv("CAMERA_FPS", "10"))
 ATTENTION_CHECK_INTERVAL: int = int(os.getenv("ATTENTION_CHECK_INTERVAL", "5"))
 
 # ---------------------------------------------------------------------------
-# Audio
+# Audio / VAD
 # ---------------------------------------------------------------------------
 TTS_MODEL: str = os.getenv("TTS_MODEL", "tts_models/en/ljspeech/tacotron2-DDC")
 STT_MODEL: str = os.getenv("STT_MODEL", "base")
 AUDIO_DEVICE_INDEX: int = int(os.getenv("AUDIO_DEVICE_INDEX", "0"))
 MIC_DEVICE_INDEX: int = int(os.getenv("MIC_DEVICE_INDEX", "0"))
+# Voice-activity detection energy threshold (RMS amplitude; raise for noisy rooms).
+VAD_ENERGY_THRESHOLD: float = float(os.getenv("VAD_ENERGY_THRESHOLD", "500.0"))
+# Seconds of silence before the VAD considers an utterance complete.
+VAD_SILENCE_DURATION: float = float(os.getenv("VAD_SILENCE_DURATION", "1.5"))
 
 # ---------------------------------------------------------------------------
 # AI Models
 # ---------------------------------------------------------------------------
 YOLO_MODEL: str = os.getenv("YOLO_MODEL", "yolov8n.pt")
 EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+# Attention score below which a student is considered distracted (0.0 – 1.0).
+DISTRACTION_THRESHOLD: float = float(os.getenv("DISTRACTION_THRESHOLD", "0.3"))
 
 # ---------------------------------------------------------------------------
 # Database

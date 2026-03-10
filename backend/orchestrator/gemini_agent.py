@@ -31,8 +31,6 @@ from backend.websocket.hub import ws_hub
 
 logger = logging.getLogger(__name__)
 
-# Seconds to wait between autonomous-loop iterations (conserves quota).
-_LOOP_SLEEP_SECONDS: float = 2.0
 # Maximum number of sequential function-call rounds per Gemini response.
 _MAX_TOOL_ROUNDS: int = 10
 
@@ -196,7 +194,7 @@ class GeminiOrchestrator:
             except Exception:
                 logger.exception("GeminiOrchestrator: error in autonomous loop — continuing")
 
-            await asyncio.sleep(_LOOP_SLEEP_SECONDS)
+            await asyncio.sleep(config.GEMINI_LOOP_INTERVAL_SECONDS)
 
         logger.info("GeminiOrchestrator: autonomous loop exited")
 
@@ -260,16 +258,7 @@ class GeminiOrchestrator:
                     if quota_manager.can_make_call():
                         try:
                             response = self.chat.send_message(  # type: ignore[union-attr]
-                                genai.protos.Content(
-                                    parts=[
-                                        genai.protos.Part(
-                                            function_response=genai.protos.FunctionResponse(
-                                                name=fn_name,
-                                                response={"result": result},
-                                            )
-                                        )
-                                    ]
-                                )
+                                self._build_function_response(fn_name, result)
                             )
                             quota_manager.record_call()
                             if session:
@@ -292,6 +281,30 @@ class GeminiOrchestrator:
     # ------------------------------------------------------------------
     # Context building
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _build_function_response(fn_name: str, result: dict) -> "genai.protos.Content":
+        """Build a Gemini function-response Content object.
+
+        Extracted into a helper to keep ``_process_response`` readable.
+
+        Args:
+            fn_name: The name of the function that was called.
+            result: The dict result returned by the tool.
+
+        Returns:
+            A ``genai.protos.Content`` ready to send back to the chat session.
+        """
+        return genai.protos.Content(
+            parts=[
+                genai.protos.Part(
+                    function_response=genai.protos.FunctionResponse(
+                        name=fn_name,
+                        response={"result": result},
+                    )
+                )
+            ]
+        )
 
     def _build_context_message(self, events: list[ClassroomEvent]) -> str:
         """Build a concise context message to inject into the Gemini chat.
@@ -317,7 +330,7 @@ class GeminiOrchestrator:
         # Student stats
         students = lecture_state.students
         present = [s for s in students.values() if s.is_present]
-        distracted = [s for s in present if s.attention_score < 0.3]
+        distracted = [s for s in present if s.attention_score < config.DISTRACTION_THRESHOLD]
         avg_attention = (
             sum(s.attention_score for s in present) / len(present)
             if present

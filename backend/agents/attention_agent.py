@@ -163,14 +163,17 @@ class AttentionAgent:
             most_distracted_id = min(scores, key=lambda k: scores[k])
             most_distracted_score = scores[most_distracted_id]
 
-        distracted_count = sum(1 for sc in scores.values() if sc < 0.3)
+        distracted_count = sum(
+            1 for sc in scores.values() if sc < config.DISTRACTION_THRESHOLD
+        )
         attentive_count = len(present) - distracted_count
 
-        # Simple trend: compare current average with the overall present proportion
-        if avg > 0.7:
+        # Trend: compare current average against thresholds.
+        # "improving" is indicated when most students are highly attentive.
+        if avg > 0.75:
+            trend = "improving"
+        elif avg > 0.45:
             trend = "stable"
-        elif avg > 0.4:
-            trend = "declining"
         else:
             trend = "declining"
 
