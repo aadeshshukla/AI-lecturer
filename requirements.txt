@@ -6,6 +6,7 @@ openai-whisper
 TTS
 pyaudio
 sounddevice
+soundfile
 ultralytics
 deepface
 opencv-python
@@ -18,3 +19,6 @@ python-dotenv
 pillow
 aiofiles
 python-multipart
+PyPDF2
+python-docx
+numpy

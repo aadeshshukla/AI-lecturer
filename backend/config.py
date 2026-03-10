@@ -24,7 +24,14 @@ WEBSOCKET_URL: str = os.getenv("WEBSOCKET_URL", "ws://localhost:8000/ws")
 # ---------------------------------------------------------------------------
 # Camera
 # ---------------------------------------------------------------------------
-CAMERA_INDEX: int = int(os.getenv("CAMERA_INDEX", "0"))
+# CAMERA_INDEX can be an int (0, 1, 2 for USB/DroidCam USB) or a URL string
+# (e.g. "http://192.168.1.5:4747/video" for DroidCam WiFi / IP Webcam).
+_raw_camera: str = os.getenv("CAMERA_INDEX", "0")
+try:
+    CAMERA_INDEX: int | str = int(_raw_camera)
+except ValueError:
+    CAMERA_INDEX = _raw_camera  # It's a URL string for an IP camera
+
 CAMERA_FPS: int = int(os.getenv("CAMERA_FPS", "10"))
 ATTENTION_CHECK_INTERVAL: int = int(os.getenv("ATTENTION_CHECK_INTERVAL", "5"))
 
