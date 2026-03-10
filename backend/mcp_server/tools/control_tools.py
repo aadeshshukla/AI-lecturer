@@ -1,9 +1,11 @@
-"""Lecture control tool stubs for the AI Autonomous Lecturer MCP server.
+"""Lecture control tools for the AI Autonomous Lecturer MCP server.
 
-TODO PR2: Replace stubs with real lecture lifecycle management.
+Implements lecture lifecycle management.  ``get_class_status`` is enriched
+with live data from ``lecture_state`` and the ``AttentionAgent``.
 """
 
 import logging
+from datetime import datetime, timezone
 
 from backend.websocket.events import EventType, create_event
 from backend.websocket.hub import ws_hub
@@ -15,45 +17,54 @@ logger = logging.getLogger(__name__)
 async def pause_lecture() -> dict:
     """Pause the ongoing lecture.
 
-    Stub: will trigger full lifecycle pause in PR2.
-
     Returns:
         dict with key ``status``.
     """
-    logger.info("[STUB] pause_lecture")
+    logger.info("pause_lecture called")
     await lecture_state.update_status("paused")
     await ws_hub.broadcast(create_event(EventType.LECTURE_PAUSED, {}))
-    # TODO PR2: Pause Gemini loop + TTS + Vision Agent
     return {"status": "paused"}
 
 
 async def end_lecture() -> dict:
     """Gracefully end the lecture session.
 
-    Stub: will trigger full shutdown sequence in PR2.
+    Updates state, broadcasts ``LECTURE_ENDED``, and signals the
+    GeminiOrchestrator loop to stop.
 
     Returns:
         dict with key ``status``.
     """
-    logger.info("[STUB] end_lecture")
+    logger.info("end_lecture called")
     session = lecture_state.session
+
+    duration_seconds = 0
+    if session and session.started_at:
+        duration_seconds = int(
+            (datetime.now(timezone.utc) - session.started_at).total_seconds()
+        )
     api_calls = session.api_calls_used if session else 0
     tool_calls = session.tool_calls_made if session else 0
+
     await lecture_state.end_session()
     await ws_hub.broadcast(
         create_event(
             EventType.LECTURE_ENDED,
-            {"duration_seconds": 0, "tool_calls": tool_calls, "api_calls_used": api_calls},
+            {
+                "duration_seconds": duration_seconds,
+                "tool_calls": tool_calls,
+                "api_calls_used": api_calls,
+            },
         )
     )
-    # TODO PR2: Full shutdown sequence
     return {"status": "ended"}
 
 
 async def set_difficulty(difficulty: str) -> dict:
     """Change the difficulty level of the ongoing lecture.
 
-    Stub: will adjust Gemini system prompt in PR2.
+    The new difficulty is stored in the session for context.  A future
+    enhancement could rebuild the system prompt and inject it mid-session.
 
     Args:
         difficulty: "beginner" | "intermediate" | "advanced".
@@ -61,43 +72,66 @@ async def set_difficulty(difficulty: str) -> dict:
     Returns:
         dict with key ``status``.
     """
-    logger.info("[STUB] set_difficulty: %s", difficulty)
-    # TODO PR2: Rebuild system prompt with new difficulty and reinject
+    logger.info("set_difficulty: %s", difficulty)
+    session = lecture_state.session
+    if session:
+        session.difficulty = difficulty
     return {"status": "updated", "difficulty": difficulty}
 
 
 async def get_class_status() -> dict:
-    """Return a snapshot of the current classroom state.
+    """Return a rich snapshot of the current classroom state.
 
-    Stub: returns basic in-memory state.  PR2 will enrich with live
-    attention scores from the Vision Agent.
+    Pulls live attention data from the AttentionAgent and presence info
+    from lecture_state to give Gemini an accurate picture of the class.
 
     Returns:
         dict with keys ``distracted_students``, ``attentive_count``,
-        ``time_elapsed``, and ``questions_pending``.
+        ``time_elapsed``, ``questions_pending``, ``average_attention``,
+        ``trend``, and ``slide_number``.
     """
-    logger.info("[STUB] get_class_status")
+    from backend.agents.attention_agent import attention_agent  # local import
+
+    logger.info("get_class_status called")
     students = lecture_state.students
+    attention_summary = attention_agent.get_attention_summary()
+
     distracted = [
-        sid for sid, s in students.items() if s.attention_score < 0.3
+        sid for sid, s in students.items() if s.attention_score < 0.3 and s.is_present
     ]
-    attentive = len(students) - len(distracted)
+    attentive_count = attention_summary.get("attentive_count", len(students) - len(distracted))
+
+    # Calculate elapsed time
+    session = lecture_state.session
+    time_elapsed = 0
+    if session and session.started_at:
+        time_elapsed = int(
+            (datetime.now(timezone.utc) - session.started_at).total_seconds()
+        )
+
     pending_events = [
         e for e in lecture_state._pending_events if not e.handled  # noqa: SLF001
     ]
+
     status = {
         "distracted_students": distracted,
-        "attentive_count": attentive,
-        "time_elapsed": 0,
+        "attentive_count": attentive_count,
+        "time_elapsed": time_elapsed,
         "questions_pending": len(pending_events),
+        "average_attention": attention_summary.get("average_attention", 1.0),
+        "trend": attention_summary.get("trend", "stable"),
+        "slide_number": lecture_state.current_slide,
+        "most_distracted": attention_summary.get("most_distracted_name"),
     }
+
     await ws_hub.broadcast(
         create_event(
             EventType.CLASS_STATUS_UPDATE,
             {
-                "attentive_count": attentive,
+                "attentive_count": attentive_count,
                 "distracted_count": len(distracted),
-                "time_elapsed": 0,
+                "time_elapsed": time_elapsed,
+                "average_attention": status["average_attention"],
             },
         )
     )

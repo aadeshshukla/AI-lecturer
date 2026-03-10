@@ -1,7 +1,8 @@
-"""Classroom management tool stubs for the AI Autonomous Lecturer MCP server.
+"""Classroom management tools for the AI Autonomous Lecturer MCP server.
 
-TODO PR2: Replace stubs with real face-recognition attendance scanning
-and student-device alert delivery.
+``scan_attendance`` delegates to the VisionAgent for real DeepFace face
+recognition.  All other tools interact with lecture_state and broadcast
+WebSocket events; student-device alert delivery is frontend-driven (PR3).
 """
 
 import logging
@@ -21,7 +22,8 @@ async def warn_student(
 ) -> dict:
     """Issue a warning to a student.
 
-    Stub: will be replaced with real alert delivery in PR2.
+    Broadcasts a ``STUDENT_WARNED`` WebSocket event so the frontend can
+    display the warning.  Increments the student's in-memory warning count.
 
     Args:
         student_id: ID of the student to warn.
@@ -33,7 +35,9 @@ async def warn_student(
     """
     student = lecture_state.students.get(student_id)
     student_name = student.name if student else student_id
-    logger.info("[STUB] warn_student: %s — %s (%s)", student_id, reason, severity)
+    if student:
+        student.warning_count += 1
+    logger.info("warn_student: %s — %s (%s)", student_id, reason, severity)
     await ws_hub.broadcast(
         create_event(
             EventType.STUDENT_WARNED,
@@ -45,14 +49,14 @@ async def warn_student(
             },
         )
     )
-    # TODO PR2: Increment warning count in DB and send alert to student device
     return {"status": "warned", "student_name": student_name}
 
 
 async def call_on_student(student_id: str, question: str) -> dict:
     """Ask a question directly to a student.
 
-    Stub: will be replaced with real student-device alert in PR2.
+    Broadcasts a ``STUDENT_CALLED`` WebSocket event so the frontend can
+    highlight the student and display the question.
 
     Args:
         student_id: ID of the student to call on.
@@ -63,7 +67,7 @@ async def call_on_student(student_id: str, question: str) -> dict:
     """
     student = lecture_state.students.get(student_id)
     student_name = student.name if student else student_id
-    logger.info("[STUB] call_on_student: %s — %s", student_id, question)
+    logger.info("call_on_student: %s — %s", student_id, question)
     await ws_hub.broadcast(
         create_event(
             EventType.STUDENT_CALLED,
@@ -74,40 +78,31 @@ async def call_on_student(student_id: str, question: str) -> dict:
             },
         )
     )
-    # TODO PR2: Send question alert to student-view page
     return {"status": "called", "student_name": student_name}
 
 
 async def scan_attendance() -> dict:
     """Run face recognition to determine which students are present.
 
-    Stub: will be replaced with real DeepFace / YOLOv8 scan in PR2.
+    Delegates to ``vision_agent.scan_attendance()`` which captures a camera
+    frame and matches faces against ``data/student_photos/`` using DeepFace.
 
     Returns:
-        dict with keys ``present``, ``absent``, and ``unknown``.
+        dict with keys ``present`` (list), ``absent`` (list), and
+        ``unknown`` (int count of unrecognised faces).
     """
-    logger.info("[STUB] scan_attendance")
-    present: List[str] = []
-    absent: List[str] = []
-    for sid, student in lecture_state.students.items():
-        if student.is_present:
-            present.append(sid)
-        else:
-            absent.append(sid)
-    await ws_hub.broadcast(
-        create_event(
-            EventType.ATTENDANCE_UPDATED,
-            {"present": present, "absent": absent},
-        )
-    )
-    # TODO PR2: Real camera capture + DeepFace recognition
-    return {"present": present, "absent": absent, "unknown": 0}
+    from backend.agents.vision_agent import vision_agent  # local import
+
+    logger.info("scan_attendance: delegating to VisionAgent")
+    return await vision_agent.scan_attendance()
 
 
 async def ask_class(question: str) -> dict:
-    """Pose a question to the entire class and wait for responses.
+    """Pose a question to the entire class.
 
-    Stub: will be replaced with real voice detection in PR2.
+    Broadcasts the question as a WebSocket event so the frontend can display
+    it.  The VoiceAgent STT loop will capture any spoken responses and enqueue
+    them as ``student_speech`` events for Gemini to react to.
 
     Args:
         question: The question to ask the whole class.
@@ -115,9 +110,8 @@ async def ask_class(question: str) -> dict:
     Returns:
         dict with key ``status``.
     """
-    logger.info("[STUB] ask_class: %s", question)
+    logger.info("ask_class: %s", question)
     await ws_hub.broadcast(
         create_event(EventType.STUDENT_SPEECH, {"transcript": question, "from": "professor"})
     )
-    # TODO PR2: Trigger STT listening for raised hands / voices
     return {"status": "asked"}
