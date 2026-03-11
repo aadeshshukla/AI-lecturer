@@ -1,9 +1,10 @@
-google-generativeai
+groq
+google-genai
 fastapi
 uvicorn
 websockets
 openai-whisper
-TTS
+pyttsx3
 pyaudio
 sounddevice
 soundfile

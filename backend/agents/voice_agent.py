@@ -2,8 +2,8 @@
 
 Two capabilities live in a single class:
 
-* **Text-to-Speech (TTS):** Coqui TTS synthesises speech and ``sounddevice``
-  plays it on the classroom speaker (system default or ``AUDIO_DEVICE_INDEX``).
+* **Text-to-Speech (TTS):** pyttsx3 synthesises speech and plays it through
+  the system default audio output.
 * **Speech-to-Text (STT):** OpenAI Whisper transcribes speech captured by the
   laptop's built-in microphone (``MIC_DEVICE_INDEX``).  A lightweight energy-
   based Voice-Activity-Detection (VAD) loop runs in a background thread.
@@ -77,19 +77,20 @@ class VoiceAgent:
     # ------------------------------------------------------------------
 
     def _load_tts(self) -> None:
-        """Lazy-load the Coqui TTS model on first use."""
+        """Lazy-load the pyttsx3 TTS engine on first use."""
         if self._tts is not None:
             return
         if config.DEMO_MODE:
             return
         try:
-            from TTS.api import TTS as CoquiTTS  # type: ignore[import-untyped]
+            import pyttsx3  # type: ignore[import-untyped]
 
-            logger.info("Loading Coqui TTS model: %s", config.TTS_MODEL)
-            self._tts = CoquiTTS(model_name=config.TTS_MODEL)
-            logger.info("Coqui TTS model loaded successfully")
+            logger.info("Loading pyttsx3 TTS engine")
+            self._tts = pyttsx3.init()
+            self._tts.setProperty("rate", 150)  # words per minute
+            logger.info("pyttsx3 TTS engine loaded successfully")
         except Exception:
-            logger.exception("Failed to load Coqui TTS model — falling back to demo mode")
+            logger.exception("Failed to load pyttsx3 TTS engine — falling back to demo mode")
 
     async def speak(self, text: str, emotion: str = "neutral") -> dict:
         """Synthesise *text* and play it on the classroom speaker.
@@ -135,45 +136,24 @@ class VoiceAgent:
         done_event = asyncio.Event()
 
         def _synth_and_play() -> None:
-            tmp_path: str | None = None
             try:
-                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                    tmp_path = tmp.name
+                import pyttsx3  # type: ignore[import-untyped]
 
-                self._tts.tts_to_file(text=text, file_path=tmp_path)
+                # Create a fresh engine per thread to avoid COM threading issues on Windows
+                engine = pyttsx3.init()
+                engine.setProperty("rate", 150)
 
-                import soundfile as sf  # type: ignore[import-untyped]
-                import sounddevice as sd  # type: ignore[import-untyped]
+                word_count = len(text.split())
+                duration_container[0] = max(0.5, word_count / 150 * 60)
 
-                data, samplerate = sf.read(tmp_path, dtype="float32")
-                duration_container[0] = len(data) / samplerate
+                if self._stop_speaking_event.is_set():
+                    return
 
-                device = (
-                    config.AUDIO_DEVICE_INDEX
-                    if config.AUDIO_DEVICE_INDEX != 0
-                    else None
-                )
-                sd.play(data, samplerate, device=device)
-
-                # Wait for playback or stop signal
-                chunk = 0.1
-                elapsed = 0.0
-                while elapsed < duration_container[0]:
-                    if self._stop_speaking_event.is_set():
-                        sd.stop()
-                        break
-                    time.sleep(chunk)
-                    elapsed += chunk
-
-                sd.wait()
+                engine.say(text)
+                engine.runAndWait()
             except Exception:
                 logger.exception("VoiceAgent: TTS playback error")
             finally:
-                if tmp_path:
-                    try:
-                        os.unlink(tmp_path)
-                    except Exception:
-                        pass
                 self.is_speaking = False
                 loop.call_soon_threadsafe(done_event.set)
 

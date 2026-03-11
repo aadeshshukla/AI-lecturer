@@ -9,12 +9,18 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ---------------------------------------------------------------------------
-# Google Gemini (brain — FREE tier: 250 requests/day)
+# Google Gemini (kept for reference; replaced by Groq below)
 # ---------------------------------------------------------------------------
 GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "")
 GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 # Seconds to sleep between autonomous-loop iterations (conserves free-tier quota).
 GEMINI_LOOP_INTERVAL_SECONDS: float = float(os.getenv("GEMINI_LOOP_INTERVAL_SECONDS", "2.0"))
+
+# ---------------------------------------------------------------------------
+# Groq (free tier: 14,400 req/day — sign up at https://console.groq.com)
+# ---------------------------------------------------------------------------
+GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
 # ---------------------------------------------------------------------------
 # Server
