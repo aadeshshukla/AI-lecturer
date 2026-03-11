@@ -243,13 +243,19 @@ class GeminiOrchestrator:
 
         # Match <function=name(args)></function> or <function=name=args></function>
         match = re.search(
-            r"<function=(?P<name>[a-zA-Z0-9_]+)\(?(?P<args>\{.*?\})\)?</function>",
+            r"<function=(?P<name>[a-zA-Z0-9_]+)\((?P<args>\{.*?\})\)</function>",
             failed_generation,
             flags=re.DOTALL,
         )
         if not match:
             match = re.search(
                 r"<function=(?P<name>[a-zA-Z0-9_]+)=(?P<args>\{.*?\})</function>",
+                failed_generation,
+                flags=re.DOTALL,
+            )
+        if not match:
+            match = re.search(
+                r"<function=(?P<name>[a-zA-Z0-9_]+)[^\{]*(?P<args>\{.*?\})</function>",
                 failed_generation,
                 flags=re.DOTALL,
             )

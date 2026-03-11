@@ -4,11 +4,6 @@ Generates a fully parameterised "Professor AI" persona that governs the
 AI's behaviour for the entire lecture session.
 """
 
-# API call budget heuristic: estimated calls per minute of lecture duration.
-_REQUESTS_PER_MINUTE_FACTOR: float = 1.5
-# Safety cap: never promise more than this many requests in the prompt.
-_MAX_LECTURE_REQUESTS: int = 200
-
 
 def build_system_prompt(
     topic: str,

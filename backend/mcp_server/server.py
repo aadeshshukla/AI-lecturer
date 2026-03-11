@@ -401,10 +401,7 @@ async def _warn_student(student_id: str, reason: str, severity: str = "mild") ->
     """Broadcast student_warned event and increment warning counter."""
     from backend.orchestrator.lecture_state import lecture_state
 
-    async with lecture_state._lock:
-        student = lecture_state.students.get(student_id)
-        if student:
-            student.warning_count += 1
+    await lecture_state.increment_student_warnings(student_id)
 
     await ws_hub.broadcast(
         create_event(
@@ -476,7 +473,7 @@ async def _get_class_status() -> dict:
             started = started.replace(tzinfo=_tz.utc)
         time_elapsed = int((datetime.now(timezone.utc) - started).total_seconds())
 
-    pending_events = [e for e in lecture_state._pending_events if not e.handled]
+    pending_events = lecture_state.get_unhandled_events()
 
     status = {
         "distracted_students": [s.id for s in distracted],

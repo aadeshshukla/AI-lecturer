@@ -183,6 +183,19 @@ class LectureState:
             if student_id in self.students:
                 self.students[student_id].is_present = is_present
 
+    async def increment_student_warnings(self, student_id: str) -> None:
+        """Increment the warning counter for a student in memory."""
+        async with self._lock:
+            if student_id in self.students:
+                self.students[student_id].warning_count += 1
+
+    def get_unhandled_events(self) -> list:
+        """Return unhandled events without acquiring the lock (read-only snapshot).
+
+        Safe for use in status queries where stale data is acceptable.
+        """
+        return [e for e in self._pending_events if not e.handled]
+
 
 # ---------------------------------------------------------------------------
 # Module-level singleton
