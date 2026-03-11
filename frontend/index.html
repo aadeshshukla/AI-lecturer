@@ -1,19 +1,140 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AI Autonomous Lecturer</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Autonomous Lecturer — Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<div class="app">
+  <!-- Navbar -->
+  <nav class="navbar">
+    <span class="brand">🎓 AI Lecturer</span>
+    <a href="/" class="active">Dashboard</a>
+    <a href="/projector" target="_blank">Projector View ↗</a>
+    <span id="thinking-indicator" style="display:none; font-size:0.8rem; color:#a5b4fc; margin-left:auto;"></span>
+    <span id="status-badge" class="status-badge idle" style="margin-left:auto;">
+      <span class="dot"></span> idle
+    </span>
+  </nav>
+
+  <!-- Main grid: left panel | center | right panel -->
+  <div class="main">
+
+    <!-- ── Left: Lecture Controls ────────────────────────────── -->
+    <aside class="panel">
+      <div class="panel-header">Lecture Controls</div>
+      <div class="panel-body">
+
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="label">Slide</div>
+            <div class="value" id="slide-number">1</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Elapsed</div>
+            <div class="value" id="time-elapsed">0:00</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Students</div>
+            <div class="value" id="student-count">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Attention</div>
+            <div class="value" id="attention-avg">—</div>
+          </div>
+        </div>
+
+        <form class="lecture-form" onsubmit="return false;">
+          <label for="topic">Topic</label>
+          <input id="topic" type="text" placeholder="e.g. Introduction to Neural Networks" />
+
+          <label for="duration">Duration (minutes)</label>
+          <input id="duration" type="number" value="45" min="1" max="180" />
+
+          <label for="difficulty">Difficulty</label>
+          <select id="difficulty">
+            <option value="beginner">Beginner</option>
+            <option value="intermediate" selected>Intermediate</option>
+            <option value="advanced">Advanced</option>
+          </select>
+
+          <button class="btn btn-primary" id="start-btn" type="button">▶ Start Lecture</button>
+          <button class="btn btn-secondary" id="pause-btn" type="button" style="display:none;">⏸ Pause</button>
+          <button class="btn btn-secondary" id="resume-btn" type="button" style="display:none;">▶ Resume</button>
+          <button class="btn btn-danger" id="end-btn" type="button" style="display:none;">⏹ End Lecture</button>
+        </form>
+
+        <hr style="border-color:#2e3246; margin: 16px 0;" />
+
+        <!-- Camera Preview -->
+        <div class="camera-preview">
+          <video id="camera-video" autoplay muted playsinline></video>
+          <div class="camera-placeholder" id="camera-placeholder">
+            📷 Camera not active<br />
+            <small>Click allows access to webcam / phone camera</small>
+          </div>
+        </div>
+        <button class="btn btn-secondary" onclick="startCamera()" style="margin-top:0;">🎥 Start Camera</button>
+
+      </div>
+    </aside>
+
+    <!-- ── Center: Slide + Board + Transcript ─────────────────── -->
+    <section class="center-panel">
+      <!-- Slide View -->
+      <div class="slide-view">
+        <div class="slide-number" id="slide-number-top">Slide 1</div>
+        <div class="slide-title" id="slide-title">Waiting to start…</div>
+        <div class="slide-content" id="slide-content">The AI will generate slide content once the lecture begins.</div>
+      </div>
+
+      <!-- Whiteboard -->
+      <div class="board-area" id="board-area">
+        <div style="color:#475569; font-size:0.8rem; font-style:italic;">Whiteboard is empty</div>
+      </div>
+
+      <!-- Speaking bar -->
+      <div class="speaking-bar" id="speaking-bar">🔊 AI speaking…</div>
+
+      <!-- Transcript -->
+      <div class="transcript" id="transcript">
+        <div class="transcript-line system">Transcript will appear here once the lecture starts.</div>
+      </div>
+    </section>
+
+    <!-- ── Right: Students ────────────────────────────────────── -->
+    <aside class="panel">
+      <div class="panel-header">Students</div>
+      <div class="panel-body">
+
+        <!-- Add Student -->
+        <div class="add-student">
+          <input id="add-student-input" type="text" placeholder="Student name…" />
+          <button id="add-student-btn">Add</button>
+        </div>
+
+        <div id="students-list">
+          <div style="color:#475569; font-size:0.8rem; font-style:italic;">Loading students…</div>
+        </div>
+
+      </div>
+
+      <!-- STT -->
+      <div class="stt-area">
+        <button class="stt-btn" id="stt-btn">🎤 Ask a Question (STT)</button>
+        <div style="font-size:0.7rem; color:#475569; margin-top:6px;">
+          Uses browser speech recognition to send student questions to the AI.
+        </div>
+      </div>
+    </aside>
+
+  </div><!-- .main -->
+</div><!-- .app -->
+
+<script src="/app.js"></script>
+</body>
 </html>
