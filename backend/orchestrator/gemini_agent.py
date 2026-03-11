@@ -1,12 +1,11 @@
-"""Groq (Llama 3.3) autonomous orchestrator for the AI Autonomous Lecturer.
+"""Groq (Llama) autonomous orchestrator for the AI Autonomous Lecturer.
 
-Drop-in replacement for the Gemini orchestrator using Groq's free tier:
-  - 14,400 requests/day (vs Gemini's 250/day)
-  - llama-3.3-70b-versatile supports full function calling
-  - No credit card required — sign up at https://console.groq.com
+Uses Groq's free tier:
+  - llama-3.1-8b-instant: fastest, 131K tokens/day free tier
+  - Full function/tool calling support
 
-The public interface (GeminiOrchestrator class, gemini_orchestrator singleton)
-is kept identical so no other file needs to change.
+The public interface (GeminiOrchestrator class) is kept for compatibility
+with the rest of the codebase.
 """
 
 import asyncio
@@ -23,7 +22,6 @@ from backend.mcp_server.server import execute_tool, get_function_declarations
 from backend.models.event import ClassroomEvent
 from backend.models.lecture import LectureSession
 from backend.orchestrator.lecture_state import lecture_state
-from backend.orchestrator.quota_manager import quota_manager
 from backend.orchestrator.system_prompt import build_system_prompt
 from backend.websocket.events import EventType, create_event
 from backend.websocket.hub import ws_hub
@@ -31,8 +29,11 @@ from backend.websocket.hub import ws_hub
 logger = logging.getLogger(__name__)
 
 # Keep only this many recent turns in history to avoid hitting token limits.
-_MAX_HISTORY_MESSAGES: int = 40
+_MAX_HISTORY_MESSAGES: int = 20
 _MIN_END_LECTURE_SECONDS: int = 120
+
+# Distraction threshold (attention score below which student is considered distracted)
+_DISTRACTION_THRESHOLD: float = 0.3
 
 
 def _wrap_tools(declarations: list[dict]) -> list[dict]:
@@ -58,9 +59,6 @@ class GeminiOrchestrator:
 
         # Conversation history — rebuilt fresh for each lecture session.
         self._messages: list[dict] = []
-
-        # Kept for compatibility; not used by Groq path.
-        self.chat = None
 
         self.is_running: bool = False
         self.session_id: Optional[str] = None
@@ -131,11 +129,6 @@ class GeminiOrchestrator:
         is_first = True
 
         while self.is_running:
-            if not quota_manager.can_make_call():
-                logger.warning("GeminiOrchestrator: quota exhausted — forcing end")
-                await self._force_end()
-                break
-
             if not is_first:
                 pending = await lecture_state.get_pending_events()
                 self._messages.append({
@@ -151,7 +144,6 @@ class GeminiOrchestrator:
                 )
 
                 text, tool_calls = await self._call_model()
-                quota_manager.record_call()
 
                 session: Optional[LectureSession] = lecture_state.session
                 if session:
@@ -225,11 +217,12 @@ class GeminiOrchestrator:
         return msg.content, msg.tool_calls or []
 
     async def _recover_from_tool_use_failed(self, exc: Exception) -> bool:
-        """Recover from Groq `tool_use_failed` by parsing failed_generation.
+        """Recover from Groq ``tool_use_failed`` by parsing the failed_generation.
 
-        Some Groq responses return a malformed function-call string inside the
-        error payload (e.g. ``<function=speak={...}</function>``). This helper
-        extracts the function name and JSON args and executes the tool directly.
+        Groq sometimes returns a malformed function-call string inside the
+        error payload (e.g. ``<function=speak({"text": "Hello"})</function>``).
+        This helper extracts the function name and JSON args and executes the
+        tool directly.
         """
         error_text = str(exc)
         if "tool_use_failed" not in error_text:
@@ -248,11 +241,18 @@ class GeminiOrchestrator:
         if not failed_generation:
             failed_generation = error_text
 
+        # Match <function=name(args)></function> or <function=name=args></function>
         match = re.search(
-            r"<function=(?P<name>[a-zA-Z0-9_]+)=(?P<args>\{.*?\})</function>",
+            r"<function=(?P<name>[a-zA-Z0-9_]+)\((?P<args>\{.*?\})\)</function>",
             failed_generation,
             flags=re.DOTALL,
         )
+        if not match:
+            match = re.search(
+                r"<function=(?P<name>[a-zA-Z0-9_]+)=(?P<args>\{.*?\})</function>",
+                failed_generation,
+                flags=re.DOTALL,
+            )
         if not match:
             match = re.search(
                 r"<function=(?P<name>[a-zA-Z0-9_]+)[^\{]*(?P<args>\{.*?\})</function>",
@@ -288,9 +288,10 @@ class GeminiOrchestrator:
                 logger.warning("tool_use_failed payload had invalid JSON args")
                 return False
 
+        fn_args = fn_args if isinstance(fn_args, dict) else {}
         logger.warning("Recovered malformed tool call from Groq error: %s", fn_name)
         try:
-            await execute_tool(fn_name, fn_args, session_id=self.session_id or "", db=None)
+            await execute_tool(fn_name, fn_args, session_id=self.session_id or "")
         except Exception:
             logger.exception("Recovered tool execution failed: %s", fn_name)
             return False
@@ -316,6 +317,7 @@ class GeminiOrchestrator:
             except Exception:
                 fn_args = {}
 
+            fn_args = fn_args if isinstance(fn_args, dict) else {}
             logger.info("Tool call: %s(%s)", fn_name, fn_args)
 
             if fn_name == "end_lecture":
@@ -355,7 +357,6 @@ class GeminiOrchestrator:
                 result = await execute_tool(
                     fn_name, fn_args,
                     session_id=self.session_id or "",
-                    db=None,
                 )
             except Exception:
                 logger.exception("Tool execution failed: %s", fn_name)
@@ -373,17 +374,15 @@ class GeminiOrchestrator:
             })
 
         # One more model call so Groq can react to the tool results
-        if quota_manager.can_make_call():
-            try:
-                text, _ = await self._call_model()
-                quota_manager.record_call()
-                session = lecture_state.session
-                if session:
-                    session.api_calls_used += 1
-                if text:
-                    await lecture_state.add_transcript_line(f"[AI] {text}")
-            except Exception:
-                logger.exception("GeminiOrchestrator: continuation call failed")
+        try:
+            text, _ = await self._call_model()
+            session = lecture_state.session
+            if session:
+                session.api_calls_used += 1
+            if text:
+                await lecture_state.add_transcript_line(f"[AI] {text}")
+        except Exception:
+            logger.exception("GeminiOrchestrator: continuation call failed")
 
         return stop
 
@@ -401,7 +400,7 @@ class GeminiOrchestrator:
 
         students = lecture_state.students
         present = [s for s in students.values() if s.is_present]
-        distracted = [s for s in present if s.attention_score < config.DISTRACTION_THRESHOLD]
+        distracted = [s for s in present if s.attention_score < _DISTRACTION_THRESHOLD]
         avg_attention = (
             sum(s.attention_score for s in present) / len(present) if present else 1.0
         )
@@ -412,7 +411,6 @@ class GeminiOrchestrator:
             f"Average attention: {avg_attention:.0%} | Distracted: {len(distracted)}",
             f"Current slide: {lecture_state.current_slide} | "
             f"Board elements: {len(lecture_state.board_elements)}",
-            f"API quota remaining: {quota_manager.remaining()}",
         ]
 
         if distracted:
@@ -435,13 +433,13 @@ class GeminiOrchestrator:
         return "\n".join(lines)
 
     async def _force_end(self) -> None:
-        """Force-end the lecture when quota is exhausted."""
+        """Force-end the lecture."""
         await lecture_state.update_status("ended")
         await ws_hub.broadcast(
             create_event(
                 EventType.LECTURE_ENDED,
                 {
-                    "reason": "quota_exhausted",
+                    "reason": "stopped",
                     "api_calls_used": (
                         lecture_state.session.api_calls_used
                         if lecture_state.session else 0
@@ -455,4 +453,3 @@ class GeminiOrchestrator:
 # Module-level singleton
 # ---------------------------------------------------------------------------
 gemini_orchestrator = GeminiOrchestrator()
-

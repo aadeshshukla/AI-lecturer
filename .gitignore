@@ -44,6 +44,11 @@ data/knowledge_base/*
 !data/student_photos/.gitkeep
 !data/knowledge_base/.gitkeep
 
+# Log files
+*.log
+*.err.log
+*.out.log
+
 # IDEs
 .idea/
 .vscode/

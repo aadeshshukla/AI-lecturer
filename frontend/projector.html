@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Autonomous Lecturer — Projector</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+  <style>
+    body { overflow: hidden; }
+    .projector-page { position: fixed; inset: 0; }
+  </style>
+</head>
+<body>
+<div class="projector-page" id="projector-page">
+
+  <!-- Status bar (top-right) -->
+  <div class="projector-status" id="proj-status">⏳ Waiting for lecture to start…</div>
+
+  <!-- Slide area -->
+  <div class="projector-slide" id="proj-slide">
+    <div class="projector-slide-title" id="proj-title">AI Autonomous Lecturer</div>
+    <div class="projector-slide-content" id="proj-content">
+      Open the dashboard and start a lecture to begin.
+      <br /><br />
+      This view will automatically display slides, whiteboard content, and AI speech.
+    </div>
+  </div>
+
+  <!-- Whiteboard area -->
+  <div class="projector-board" id="proj-board" style="display:none;"></div>
+
+  <!-- Speaking caption bar (bottom) -->
+  <div class="projector-speaking" id="proj-speaking" style="display:none;"></div>
+
+</div>
+
+<script>
+  const WS_URL = `ws://${location.host}/ws`;
+
+  let ws = null;
+  let boardElements = [];
+  let speechQueue = [];
+  let speechBusy = false;
+
+  // ── WebSocket ──────────────────────────────────────────────────────────────
+
+  function connectWS() {
+    ws = new WebSocket(WS_URL);
+    ws.onopen = () => console.log('[Projector WS] Connected');
+    ws.onmessage = (evt) => {
+      try {
+        const event = JSON.parse(evt.data);
+        handleEvent(event);
+      } catch (e) {}
+    };
+    ws.onclose = () => setTimeout(connectWS, 3000);
+  }
+
+  // ── Event Handler ──────────────────────────────────────────────────────────
+
+  function handleEvent({ type, data }) {
+    switch (type) {
+      case 'lecture_started':
+        document.getElementById('proj-status').textContent = `�� ${data.topic} — ${data.duration_minutes}min`;
+        document.getElementById('proj-title').textContent = data.topic;
+        document.getElementById('proj-content').textContent = 'Lecture starting…';
+        break;
+
+      case 'lecture_ended':
+        document.getElementById('proj-status').textContent = '✓ Lecture ended';
+        document.getElementById('proj-speaking').style.display = 'none';
+        break;
+
+      case 'lecture_paused':
+        document.getElementById('proj-status').textContent = '⏸ Paused';
+        break;
+
+      case 'lecture_resumed':
+        document.getElementById('proj-status').textContent = '▶ Resumed';
+        break;
+
+      case 'speaking_start':
+        queueSpeech(data.text, data.emotion);
+        showCaption(data.text);
+        break;
+
+      case 'speaking_end':
+        cancelSpeech();
+        break;
+
+      case 'slide_advanced':
+        updateSlide(data);
+        break;
+
+      case 'board_write':
+        addBoardElement({ type: 'text', content: data.content, style: data.style || 'normal' });
+        break;
+
+      case 'board_clear':
+        clearBoard();
+        break;
+
+      case 'board_draw':
+        addBoardElement({ type: 'diagram', diagram_type: data.diagram_type, data: data.data });
+        break;
+
+      case 'board_highlight':
+        highlightBoardItem(data.element_id);
+        break;
+
+      case 'student_warned':
+        flashNotice(`⚠ ${data.reason}`, 'warn');
+        break;
+
+      case 'student_called':
+        flashNotice(`❓ ${data.question}`, 'question');
+        break;
+
+      case 'ask_class':
+        flashNotice(`❓ ${data.question}`, 'question');
+        break;
+    }
+  }
+
+  // ── Slide ──────────────────────────────────────────────────────────────────
+
+  function updateSlide(data) {
+    document.getElementById('proj-status').textContent = `Slide ${data.slide_number}`;
+    if (data.title) {
+      document.getElementById('proj-title').textContent = data.title;
+    }
+    if (data.content) {
+      document.getElementById('proj-content').textContent = data.content;
+    } else if (!data.title) {
+      // Just advance the slide number visually
+      const current = document.getElementById('proj-title').textContent;
+      document.getElementById('proj-status').textContent = `Slide ${data.slide_number}`;
+    }
+  }
+
+  // ── Board ──────────────────────────────────────────────────────────────────
+
+  function addBoardElement(el) {
+    boardElements.push(el);
+    renderBoard();
+    document.getElementById('proj-board').style.display = 'block';
+  }
+
+  function clearBoard() {
+    boardElements = [];
+    document.getElementById('proj-board').innerHTML = '';
+    document.getElementById('proj-board').style.display = 'none';
+  }
+
+  function renderBoard() {
+    const container = document.getElementById('proj-board');
+    container.innerHTML = '';
+    boardElements.forEach((el) => {
+      const div = document.createElement('div');
+      if (el.type === 'diagram') {
+        div.className = 'projector-board-item';
+        div.textContent = formatDiagram(el.diagram_type, el.data);
+      } else {
+        div.className = `projector-board-item ${el.style || 'normal'}`;
+        div.textContent = el.content;
+      }
+      container.appendChild(div);
+    });
+  }
+
+  function formatDiagram(type, data) {
+    if (!data) return `[${type}]`;
+    // Render diagrams as readable text
+    if (type === 'table' && data.rows) {
+      return data.rows.map((r) => Array.isArray(r) ? r.join(' | ') : r).join('\n');
+    }
+    if (type === 'mindmap' && data.nodes) {
+      return data.nodes.join(' → ');
+    }
+    if (data.title) return `[${type}] ${data.title}`;
+    return `[${type}] ${JSON.stringify(data).substring(0, 80)}`;
+  }
+
+  function highlightBoardItem(elementId) {
+    const items = document.querySelectorAll('.projector-board-item');
+    items.forEach((el, i) => {
+      el.style.background = i === parseInt(elementId) ? 'rgba(99,102,241,0.2)' : '';
+    });
+  }
+
+  // ── TTS ────────────────────────────────────────────────────────────────────
+
+  function queueSpeech(text, emotion) {
+    speechQueue.push({ text, emotion });
+    if (!speechBusy) processSpeechQueue();
+  }
+
+  function processSpeechQueue() {
+    if (speechQueue.length === 0) {
+      speechBusy = false;
+      return;
+    }
+    speechBusy = true;
+    const { text, emotion } = speechQueue.shift();
+    speakText(text, emotion, processSpeechQueue);
+  }
+
+  function speakText(text, emotion, onEnd) {
+    if (!('speechSynthesis' in window)) { if (onEnd) onEnd(); return; }
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
+    switch (emotion) {
+      case 'enthusiastic': utter.rate = 1.15; utter.pitch = 1.1; break;
+      case 'serious':      utter.rate = 0.9;  utter.pitch = 0.9; break;
+      case 'encouraging':  utter.rate = 1.0;  utter.pitch = 1.05; break;
+      default:             utter.rate = 1.0;  utter.pitch = 1.0;
+    }
+    utter.lang = 'en-US';
+    utter.onend = () => { if (onEnd) onEnd(); };
+    utter.onerror = () => { if (onEnd) onEnd(); };
+    window.speechSynthesis.speak(utter);
+  }
+
+  function cancelSpeech() {
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    speechQueue = [];
+    speechBusy = false;
+    document.getElementById('proj-speaking').style.display = 'none';
+  }
+
+  // ── Caption ────────────────────────────────────────────────────────────────
+
+  let captionTimer = null;
+
+  function showCaption(text) {
+    const el = document.getElementById('proj-speaking');
+    el.textContent = text;
+    el.style.display = 'flex';
+    if (captionTimer) clearTimeout(captionTimer);
+    // Hide caption after estimated speech duration
+    const words = text.split(' ').length;
+    const ms = Math.max(4000, words * 400);
+    captionTimer = setTimeout(() => {
+      el.style.display = 'none';
+    }, ms);
+  }
+
+  // ── Flash notice ───────────────────────────────────────────────────────────
+
+  function flashNotice(msg, type) {
+    const div = document.createElement('div');
+    div.style.cssText = `
+      position:fixed; top:80px; left:50%; transform:translateX(-50%);
+      background:${type === 'question' ? '#1e3a5f' : '#450a0a'};
+      color:#fff; padding:12px 24px; border-radius:8px; font-size:1rem;
+      z-index:100; transition:opacity 0.5s;
+    `;
+    div.textContent = msg;
+    document.body.appendChild(div);
+    setTimeout(() => { div.style.opacity = '0'; }, 3000);
+    setTimeout(() => { div.remove(); }, 3500);
+  }
+
+  // ── Fullscreen on click ────────────────────────────────────────────────────
+
+  document.addEventListener('click', () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+  });
+
+  connectWS();
+</script>
+</body>
+</html>

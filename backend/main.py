@@ -1,84 +1,88 @@
 """FastAPI application entry point for the AI Autonomous Lecturer backend.
 
 Exposes:
-  - GET  /                         → health check
+  - GET  /                         → serves frontend (index.html)
+  - GET  /projector                → serves projector view (projector.html)
   - POST /api/lecture/start        → start autonomous lecture
   - POST /api/lecture/pause        → pause lecture
   - POST /api/lecture/resume       → resume lecture
   - POST /api/lecture/end          → end lecture
-  - GET  /api/lecture/status       → current lecture state + API quota
-  - GET  /api/students             → list all students
-  - POST /api/students             → add student (with photo upload)
-  - GET  /api/students/{id}        → get student details
-  - POST /api/knowledge/upload     → upload document to knowledge base
-  - GET  /api/attendance/{session} → attendance data for a session
-  - GET  /api/quota                → remaining Gemini API calls today
+  - GET  /api/lecture/status       → current lecture state
+  - GET  /api/students             → list all students (in-memory)
+  - POST /api/students             → add a student (JSON, name only)
   - WebSocket /ws                  → real-time event stream
 """
 
 import asyncio
 import json
 import logging
-import os
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import List, Optional
+from pathlib import Path
+from typing import List
 
 import uvicorn
 from fastapi import (
     APIRouter,
-    Depends,
     FastAPI,
-    File,
-    Form,
     HTTPException,
-    UploadFile,
     WebSocket,
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
 from backend import config
-from backend.agents.attention_agent import AttentionAgent
-from backend.agents.knowledge_agent import KnowledgeAgent
-from backend.agents.vision_agent import VisionAgent
-from backend.agents.voice_agent import VoiceAgent
-from backend.database.db import get_db, init_db
-from backend.database.sessions import (
-    create_session as db_create_session,
-    end_session as db_end_session,
-    get_session as db_get_session,
-)
-from backend.database.students import (
-    create_student,
-    get_all_students,
-    get_student,
-)
 from backend.models.event import ClassroomEvent
 from backend.models.lecture import LectureSession
 from backend.models.student import Student
 from backend.orchestrator.gemini_agent import GeminiOrchestrator
 from backend.orchestrator.lecture_state import lecture_state
-from backend.orchestrator.quota_manager import quota_manager
 from backend.websocket.events import create_event
 from backend.websocket.hub import ws_hub
-
-if config.DEMO_MODE:
-    from backend.demo.mock_students import seed_demo_students
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Singleton agent instances (created once per process lifetime)
+# Demo students seeded on startup
 # ---------------------------------------------------------------------------
+
+_DEMO_STUDENTS = [
+    {"name": "Alice Chen"},
+    {"name": "Bob Martinez"},
+    {"name": "Carol Singh"},
+    {"name": "David Kim"},
+    {"name": "Eva Patel"},
+]
+
+# ---------------------------------------------------------------------------
+# In-memory student registry (persists for process lifetime)
+# ---------------------------------------------------------------------------
+
+_students: dict[str, Student] = {}
+
+
+def _seed_demo_students() -> None:
+    """Populate the in-memory student registry with demo students."""
+    for s in _DEMO_STUDENTS:
+        sid = str(uuid.uuid4())
+        _students[sid] = Student(
+            id=sid,
+            name=s["name"],
+            photo_path="",
+            email="",
+        )
+    logger.info("Seeded %d demo students", len(_DEMO_STUDENTS))
+
+
+# ---------------------------------------------------------------------------
+# Orchestrator singleton
+# ---------------------------------------------------------------------------
+
 gemini_orchestrator = GeminiOrchestrator()
-voice_agent = VoiceAgent()
-vision_agent = VisionAgent()
-attention_agent = AttentionAgent()
-knowledge_agent = KnowledgeAgent()
 
 
 # ---------------------------------------------------------------------------
@@ -87,36 +91,12 @@ knowledge_agent = KnowledgeAgent()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup: initialise database. Shutdown: stop all agents."""
-    init_db()
-
-    if config.DEMO_MODE:
-        logger.info("🧪 DEMO MODE ACTIVE — using mock hardware")
-        # Auto-seed demo students so a lecture can start without manual setup
-        try:
-            db_gen = get_db()
-            db = next(db_gen)
-            try:
-                count = seed_demo_students(db)
-                if count:
-                    logger.info("DEMO MODE: seeded %d demo students", count)
-            finally:
-                try:
-                    next(db_gen)
-                except StopIteration:
-                    pass
-        except Exception:
-            logger.exception("DEMO MODE: failed to seed demo students (non-fatal)")
-
+    """Startup: seed demo students. Shutdown: stop orchestrator."""
+    _seed_demo_students()
     logger.info("AI Autonomous Lecturer backend started.")
     yield
-    # Cleanup on shutdown
     try:
-        vision_agent.stop()
-    except Exception:
-        pass
-    try:
-        voice_agent.stop_listening()
+        await gemini_orchestrator.stop_lecture()
     except Exception:
         pass
     logger.info("AI Autonomous Lecturer backend shutting down.")
@@ -128,17 +108,13 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="AI Autonomous Lecturer",
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        f"http://localhost:{config.FRONTEND_PORT}",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -157,21 +133,22 @@ class StartLectureRequest(BaseModel):
     difficulty: str = "intermediate"
 
 
+class AddStudentRequest(BaseModel):
+    name: str
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 
-@router.get("/")
+@router.get("/api/health")
 async def health_check():
     """Health check endpoint."""
-    return {"status": "ok", "name": "AI Autonomous Lecturer", "version": "1.0.0"}
+    return {"status": "ok", "name": "AI Autonomous Lecturer", "version": "2.0.0"}
 
 
 @router.post("/api/lecture/start")
-async def start_lecture(
-    body: StartLectureRequest,
-    db: Session = Depends(get_db),
-):
+async def start_lecture(body: StartLectureRequest):
     """Start an autonomous lecture session."""
     if lecture_state.status not in ("idle", "ended"):
         raise HTTPException(
@@ -182,8 +159,7 @@ async def start_lecture(
     session_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
 
-    # Persist session in DB
-    db_session = LectureSession(
+    session = LectureSession(
         id=session_id,
         topic=body.topic,
         difficulty=body.difficulty,
@@ -191,39 +167,12 @@ async def start_lecture(
         status="starting",
         duration_minutes=body.duration_minutes,
     )
-    try:
-        db_create_session(db, db_session)
-    except Exception as exc:
-        logger.error("Failed to create session in DB: %s", exc)
-        raise HTTPException(status_code=500, detail="Failed to create session") from exc
 
-    # Initialise in-memory lecture state
-    await lecture_state.start_session(db_session)
+    await lecture_state.start_session(session)
 
-    # Load students from DB and register them
-    students: List[Student] = get_all_students(db)
+    students: List[Student] = list(_students.values())
     await lecture_state.register_students(students)
 
-    # Start peripheral agents (errors are non-fatal in demo mode)
-    try:
-        vision_agent.start()
-    except Exception as exc:
-        logger.warning("VisionAgent.start() failed (non-fatal): %s", exc)
-
-    if config.ENABLE_MIC:
-        try:
-            voice_agent.start_listening()
-        except Exception as exc:
-            logger.warning("VoiceAgent.start_listening() failed (non-fatal): %s", exc)
-    else:
-        logger.info("Microphone capture disabled via ENABLE_MIC=false")
-
-    try:
-        await knowledge_agent.initialize()
-    except Exception as exc:
-        logger.warning("KnowledgeAgent.initialize() failed (non-fatal): %s", exc)
-
-    # Launch Gemini autonomous loop as a background task
     asyncio.create_task(
         gemini_orchestrator.start_lecture(
             topic=body.topic,
@@ -277,41 +226,22 @@ async def resume_lecture():
 
 
 @router.post("/api/lecture/end")
-async def end_lecture(db: Session = Depends(get_db)):
+async def end_lecture():
     """End the current lecture session."""
     if lecture_state.status in ("idle",):
         raise HTTPException(status_code=409, detail="No active lecture to end")
 
-    # Stop Gemini loop
     try:
         await gemini_orchestrator.stop_lecture()
     except Exception as exc:
         logger.warning("gemini_orchestrator.stop_lecture() error: %s", exc)
 
-    # Stop agents
-    try:
-        vision_agent.stop()
-    except Exception as exc:
-        logger.warning("VisionAgent.stop() error: %s", exc)
-
-    try:
-        voice_agent.stop_listening()
-    except Exception as exc:
-        logger.warning("VoiceAgent.stop_listening() error: %s", exc)
-
-    # Update in-memory state
     session = lecture_state.session
     await lecture_state.end_session()
 
-    # Persist to DB
-    if session:
-        try:
-            db_end_session(db, session.id)
-        except Exception as exc:
-            logger.warning("db_end_session error: %s", exc)
-
-    await ws_hub.broadcast(create_event("lecture_ended", {"session_id": session.id if session else None}))
-
+    await ws_hub.broadcast(
+        create_event("lecture_ended", {"session_id": session.id if session else None})
+    )
     return {"status": "ended"}
 
 
@@ -346,8 +276,6 @@ async def get_lecture_status():
         "student_count": len(students),
         "students_present": sum(1 for s in students if s.is_present),
         "attention_average": round(attention_average, 3),
-        "api_calls_used": quota_manager.calls_today,
-        "api_calls_remaining": quota_manager.remaining(),
         "transcript": list(lecture_state.transcript)[-20:],
     }
 
@@ -357,167 +285,38 @@ async def get_lecture_status():
 # ---------------------------------------------------------------------------
 
 @router.get("/api/students")
-async def list_students(db: Session = Depends(get_db)):
+async def list_students():
     """Return all registered students."""
-    students = get_all_students(db)
     return [
         {
             "id": s.id,
             "name": s.name,
-            "email": s.email,
-            "photo_path": s.photo_path,
             "attention_score": s.attention_score,
             "is_present": s.is_present,
             "warning_count": s.warning_count,
         }
-        for s in students
+        for s in _students.values()
     ]
 
 
 @router.post("/api/students", status_code=201)
-async def add_student(
-    name: str = Form(...),
-    email: str = Form(...),
-    photo: Optional[UploadFile] = File(None),
-    db: Session = Depends(get_db),
-):
-    """Add a new student with optional photo upload."""
+async def add_student(body: AddStudentRequest):
+    """Add a new student (name only)."""
     student_id = str(uuid.uuid4())
-    photo_path = ""
-
-    if photo and photo.filename:
-        photos_dir = os.path.join("data", "student_photos")
-        os.makedirs(photos_dir, exist_ok=True)
-        ext = os.path.splitext(photo.filename)[-1] or ".jpg"
-        photo_path = os.path.join(photos_dir, f"{student_id}{ext}")
-        try:
-            content = await photo.read()
-            with open(photo_path, "wb") as fh:
-                fh.write(content)
-        except Exception as exc:
-            logger.error("Failed to save student photo: %s", exc)
-            raise HTTPException(status_code=500, detail="Failed to save photo") from exc
-
     student = Student(
         id=student_id,
-        name=name,
-        email=email,
-        photo_path=photo_path,
+        name=body.name,
+        photo_path="",
+        email="",
     )
-    try:
-        created = create_student(db, student)
-    except Exception as exc:
-        logger.error("Failed to create student: %s", exc)
-        raise HTTPException(status_code=500, detail="Failed to create student") from exc
-
-    return {
-        "id": created.id,
-        "name": created.name,
-        "email": created.email,
-        "photo_path": created.photo_path,
-        "attention_score": created.attention_score,
-        "is_present": created.is_present,
-        "warning_count": created.warning_count,
-    }
-
-
-@router.get("/api/students/{student_id}")
-async def get_student_detail(student_id: str, db: Session = Depends(get_db)):
-    """Return details for a single student."""
-    student = get_student(db, student_id)
-    if not student:
-        raise HTTPException(status_code=404, detail="Student not found")
+    _students[student_id] = student
+    logger.info("Student added: id=%s name=%s", student_id, body.name)
     return {
         "id": student.id,
         "name": student.name,
-        "email": student.email,
-        "photo_path": student.photo_path,
         "attention_score": student.attention_score,
         "is_present": student.is_present,
         "warning_count": student.warning_count,
-        "last_seen": student.last_seen.isoformat() if student.last_seen else None,
-    }
-
-
-# ---------------------------------------------------------------------------
-# Knowledge base
-# ---------------------------------------------------------------------------
-
-@router.post("/api/knowledge/upload")
-async def upload_knowledge(file: UploadFile = File(...)):
-    """Upload a document to the knowledge base for RAG retrieval."""
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="No filename provided")
-
-    kb_dir = os.path.join("data", "knowledge_base")
-    os.makedirs(kb_dir, exist_ok=True)
-    dest_path = os.path.join(kb_dir, file.filename)
-
-    try:
-        content = await file.read()
-        with open(dest_path, "wb") as fh:
-            fh.write(content)
-    except Exception as exc:
-        logger.error("Failed to save knowledge file: %s", exc)
-        raise HTTPException(status_code=500, detail="Failed to save file") from exc
-
-    try:
-        await knowledge_agent.add_document(dest_path)
-    except Exception as exc:
-        logger.warning("KnowledgeAgent.add_document() error (non-fatal): %s", exc)
-
-    return {"status": "ingested", "filename": file.filename}
-
-
-# ---------------------------------------------------------------------------
-# Attendance
-# ---------------------------------------------------------------------------
-
-@router.get("/api/attendance/{session_id}")
-async def get_attendance(session_id: str, db: Session = Depends(get_db)):
-    """Return attendance data for a given session."""
-    session = db_get_session(db, session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    # If this is the currently active session, pull from live state
-    if (
-        lecture_state.session
-        and lecture_state.session.id == session_id
-    ):
-        students = list(lecture_state.students.values())
-    else:
-        students = get_all_students(db)
-
-    return {
-        "session_id": session_id,
-        "topic": session.topic,
-        "started_at": session.started_at.isoformat() if session.started_at else None,
-        "ended_at": session.ended_at.isoformat() if session.ended_at else None,
-        "students": [
-            {
-                "id": s.id,
-                "name": s.name,
-                "is_present": s.is_present,
-                "attention_score": s.attention_score,
-                "warning_count": s.warning_count,
-            }
-            for s in students
-        ],
-    }
-
-
-# ---------------------------------------------------------------------------
-# Quota
-# ---------------------------------------------------------------------------
-
-@router.get("/api/quota")
-async def get_quota():
-    """Return current Gemini API quota usage."""
-    return {
-        "used": quota_manager.calls_today,
-        "remaining": quota_manager.remaining(),
-        "limit": quota_manager.DAILY_LIMIT,
     }
 
 
@@ -539,8 +338,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
             msg_type = msg.get("type")
 
-            if msg_type == "inject_speech":
-                # Demo: simulate student speaking
+            if msg_type == "student_speech":
                 text = msg.get("text", "")
                 student_id = msg.get("student_id", "unknown")
                 event = ClassroomEvent(
@@ -548,12 +346,12 @@ async def websocket_endpoint(websocket: WebSocket):
                     data={"text": text, "student_id": student_id},
                 )
                 await lecture_state.add_event(event)
-                # Also broadcast to other clients
-                ws_event = create_event(
-                    "student_speech",
-                    {"text": text, "student_id": student_id},
+                await ws_hub.broadcast(
+                    create_event(
+                        "student_speech",
+                        {"text": text, "student_id": student_id},
+                    )
                 )
-                await ws_hub.broadcast(ws_event)
 
     except WebSocketDisconnect:
         pass
@@ -564,10 +362,25 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 # ---------------------------------------------------------------------------
-# Mount router
+# Mount API router
 # ---------------------------------------------------------------------------
 
 app.include_router(router)
+
+# ---------------------------------------------------------------------------
+# Serve frontend static files (must come after API routes)
+# ---------------------------------------------------------------------------
+
+_FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+
+if _FRONTEND_DIR.exists():
+    # Serve /projector → projector.html
+    @app.get("/projector")
+    async def projector_page():
+        return FileResponse(_FRONTEND_DIR / "projector.html")
+
+    # Mount static assets (css, js, etc.)
+    app.mount("/", StaticFiles(directory=str(_FRONTEND_DIR), html=True), name="frontend")
 
 
 # ---------------------------------------------------------------------------
