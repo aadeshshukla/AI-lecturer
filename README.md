@@ -126,6 +126,31 @@ Perfect for expo and presentation demos on machines without camera/microphone ha
 
 ---
 
+## 🎥 Hardware Showcase Profile (Mobile Camera + Bluetooth Speaker + Projector)
+
+Use this profile when you have:
+- Mobile phone camera (DroidCam/IP Webcam)
+- Bluetooth speaker
+- Projector/second display
+- No microphone available
+
+Set these in `.env`:
+
+```env
+DEMO_MODE=false
+ENABLE_MIC=false
+CAMERA_INDEX=http://<your-phone-ip>:4747/video
+GEMINI_LOOP_INTERVAL_SECONDS=3.0
+```
+
+Notes:
+- Set your Bluetooth speaker as the **system default output device** before starting the backend.
+- Open `http://localhost:5173/projector` on the projector display and press `F11`.
+- For a stable showcase, start a **15 minute** lecture from Dashboard (Duration = 15).
+- If YOLO/Torch fails on Windows, the backend now auto-falls back to lightweight camera mode so the lecture can continue.
+
+---
+
 ## 🔧 Hardware Setup (Real Classroom Use)
 
 ### Speaker

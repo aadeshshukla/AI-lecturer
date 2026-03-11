@@ -162,7 +162,15 @@ class VoiceAgent:
         )
         self._speak_thread.start()
 
-        await done_event.wait()
+        try:
+            await asyncio.wait_for(done_event.wait(), timeout=config.TTS_MAX_PLAYBACK_SECONDS)
+        except asyncio.TimeoutError:
+            logger.warning(
+                "VoiceAgent: TTS playback exceeded timeout (%.1fs), continuing loop",
+                config.TTS_MAX_PLAYBACK_SECONDS,
+            )
+            self._stop_speaking_event.set()
+            self.is_speaking = False
 
         await ws_hub.broadcast(
             create_event(
@@ -208,6 +216,10 @@ class VoiceAgent:
         real microphone.  Use ``inject_mock_speech`` to manually inject
         speech at any time.
         """
+        if not config.ENABLE_MIC:
+            logger.info("VoiceAgent.start_listening: ENABLE_MIC=false, skipping STT startup")
+            return
+
         if config.DEMO_MODE:
             logger.info("VoiceAgent.start_listening: DEMO_MODE — starting mock microphone")
             if self._mock_mic is None:
@@ -385,7 +397,14 @@ class VoiceAgent:
         )
         await lecture_state.add_event(event)
         await ws_hub.broadcast(
-            create_event(EventType.STUDENT_SPEECH, {"transcript": transcript})
+            create_event(
+                EventType.STUDENT_SPEECH,
+                {
+                    "text": transcript,
+                    "student_id": "microphone",
+                    "source": "microphone",
+                },
+            )
         )
 
     # ------------------------------------------------------------------

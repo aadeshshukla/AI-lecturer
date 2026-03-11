@@ -37,6 +37,9 @@ function reducer(state, action) {
     case 'lecture_paused':
       return { ...state, status: 'paused' };
 
+    case 'lecture_resumed':
+      return { ...state, status: 'active' };
+
     case 'lecture_ended':
       return { ...state, status: 'ended', speakingText: '' };
 
@@ -49,11 +52,15 @@ function reducer(state, action) {
     case 'board_write':
     case 'board_draw':
     case 'board_highlight': {
+      const position =
+        data.position && typeof data.position === 'object'
+          ? data.position
+          : { x: 20, y: 20 + state.boardElements.length * 60 };
       const element = {
-        id: data.id || `el-${Date.now()}-${Math.random()}`,
+        id: data.id || data.element_id || `el-${Date.now()}-${Math.random()}`,
         type: data.element_type || data.type || 'text',
         content: data.content || '',
-        position: data.position || { x: 20, y: 20 },
+        position,
         style: data.style || {},
       };
       return { ...state, boardElements: [...state.boardElements, element] };
@@ -106,10 +113,11 @@ function reducer(state, action) {
       };
 
     case 'student_speech': {
+      const speechText = data.text || data.transcript || '';
       const line = {
         id: Date.now(),
         speaker: 'STUDENT',
-        text: data.text || '',
+        text: speechText,
         studentId: data.student_id,
       };
       const transcript = [...state.transcript, line].slice(-MAX_TRANSCRIPT);

@@ -47,9 +47,13 @@ ATTENTION_CHECK_INTERVAL: int = int(os.getenv("ATTENTION_CHECK_INTERVAL", "5"))
 # Audio / VAD
 # ---------------------------------------------------------------------------
 TTS_MODEL: str = os.getenv("TTS_MODEL", "tts_models/en/ljspeech/tacotron2-DDC")
+# Maximum seconds to wait for one TTS utterance before continuing lecture loop.
+TTS_MAX_PLAYBACK_SECONDS: float = float(os.getenv("TTS_MAX_PLAYBACK_SECONDS", "20"))
 STT_MODEL: str = os.getenv("STT_MODEL", "base")
 AUDIO_DEVICE_INDEX: int = int(os.getenv("AUDIO_DEVICE_INDEX", "0"))
 MIC_DEVICE_INDEX: int = int(os.getenv("MIC_DEVICE_INDEX", "0"))
+# Set false to skip opening microphone/STT during lecture startup.
+ENABLE_MIC: bool = os.getenv("ENABLE_MIC", "true").lower() == "true"
 # Voice-activity detection energy threshold (RMS amplitude; raise for noisy rooms).
 VAD_ENERGY_THRESHOLD: float = float(os.getenv("VAD_ENERGY_THRESHOLD", "500.0"))
 # Seconds of silence before the VAD considers an utterance complete.

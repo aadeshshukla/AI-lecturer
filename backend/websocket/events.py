@@ -17,6 +17,7 @@ class EventType(str, Enum):
     # Lecture lifecycle
     LECTURE_STARTED = "lecture_started"
     LECTURE_PAUSED = "lecture_paused"
+    LECTURE_RESUMED = "lecture_resumed"
     LECTURE_ENDED = "lecture_ended"
 
     # Speech

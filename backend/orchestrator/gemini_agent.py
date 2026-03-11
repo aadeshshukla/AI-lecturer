@@ -12,6 +12,7 @@ is kept identical so no other file needs to change.
 import asyncio
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -31,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 # Keep only this many recent turns in history to avoid hitting token limits.
 _MAX_HISTORY_MESSAGES: int = 40
+_MIN_END_LECTURE_SECONDS: int = 120
 
 
 def _wrap_tools(declarations: list[dict]) -> list[dict]:
@@ -63,6 +65,7 @@ class GeminiOrchestrator:
         self.is_running: bool = False
         self.session_id: Optional[str] = None
         self._session_start: Optional[datetime] = None
+        self._target_duration_minutes: int = 0
         self._end_lecture_called: bool = False
 
     # ------------------------------------------------------------------
@@ -90,6 +93,7 @@ class GeminiOrchestrator:
         self.is_running = True
         self.session_id = session_id
         self._session_start = datetime.now(timezone.utc)
+        self._target_duration_minutes = duration_minutes
         self._end_lecture_called = False
 
         logger.info(
@@ -165,6 +169,9 @@ class GeminiOrchestrator:
 
             except Exception as exc:
                 err_str = str(exc)
+                if await self._recover_from_tool_use_failed(exc):
+                    await asyncio.sleep(config.GEMINI_LOOP_INTERVAL_SECONDS)
+                    continue
                 if "429" in err_str or "rate_limit" in err_str.lower():
                     logger.warning(
                         "GeminiOrchestrator: 429 rate-limited — backing off 60 s"
@@ -217,6 +224,82 @@ class GeminiOrchestrator:
         self._messages.append(entry)
         return msg.content, msg.tool_calls or []
 
+    async def _recover_from_tool_use_failed(self, exc: Exception) -> bool:
+        """Recover from Groq `tool_use_failed` by parsing failed_generation.
+
+        Some Groq responses return a malformed function-call string inside the
+        error payload (e.g. ``<function=speak={...}</function>``). This helper
+        extracts the function name and JSON args and executes the tool directly.
+        """
+        error_text = str(exc)
+        if "tool_use_failed" not in error_text:
+            return False
+
+        failed_generation = ""
+        err_body = getattr(exc, "body", None)
+        if isinstance(err_body, dict):
+            failed_generation = (
+                err_body.get("error", {}).get("failed_generation", "") or ""
+            )
+        if not failed_generation:
+            fg_match = re.search(r"'failed_generation':\s*'(?P<fg>.*?)'\s*\}\}$", error_text)
+            if fg_match:
+                failed_generation = fg_match.group("fg")
+        if not failed_generation:
+            failed_generation = error_text
+
+        match = re.search(
+            r"<function=(?P<name>[a-zA-Z0-9_]+)=(?P<args>\{.*?\})</function>",
+            failed_generation,
+            flags=re.DOTALL,
+        )
+        if not match:
+            match = re.search(
+                r"<function=(?P<name>[a-zA-Z0-9_]+)[^\{]*(?P<args>\{.*?\})</function>",
+                failed_generation,
+                flags=re.DOTALL,
+            )
+        if not match:
+            logger.warning("tool_use_failed received, but no recoverable function payload")
+            return False
+
+        fn_name = match.group("name")
+        raw_args = match.group("args").replace("\\'", "'")
+        try:
+            fn_args = json.loads(raw_args)
+        except json.JSONDecodeError:
+            # Fallback for malformed JSON-like payloads: recover common speak() case.
+            if fn_name == "speak":
+                text_match = re.search(r'"text"\s*:\s*"(?P<text>.*?)"', raw_args, flags=re.DOTALL)
+                emotion_match = re.search(
+                    r'"emotion"\s*:\s*"(?P<emotion>.*?)"', raw_args, flags=re.DOTALL
+                )
+                if text_match:
+                    fn_args = {
+                        "text": text_match.group("text").replace('\\"', '"'),
+                        "emotion": (
+                            emotion_match.group("emotion") if emotion_match else "neutral"
+                        ),
+                    }
+                else:
+                    logger.warning("tool_use_failed payload had invalid JSON args")
+                    return False
+            else:
+                logger.warning("tool_use_failed payload had invalid JSON args")
+                return False
+
+        logger.warning("Recovered malformed tool call from Groq error: %s", fn_name)
+        try:
+            await execute_tool(fn_name, fn_args, session_id=self.session_id or "", db=None)
+        except Exception:
+            logger.exception("Recovered tool execution failed: %s", fn_name)
+            return False
+
+        session = lecture_state.session
+        if session:
+            session.tool_calls_made += 1
+        return True
+
     async def _process_tool_calls(self, tool_calls: list) -> bool:
         """Execute every tool call, add results to history, get continuation.
 
@@ -236,6 +319,35 @@ class GeminiOrchestrator:
             logger.info("Tool call: %s(%s)", fn_name, fn_args)
 
             if fn_name == "end_lecture":
+                elapsed_seconds = 0
+                if self._session_start:
+                    elapsed_seconds = int(
+                        (datetime.now(timezone.utc) - self._session_start).total_seconds()
+                    )
+                min_runtime_seconds = min(
+                    _MIN_END_LECTURE_SECONDS,
+                    max(30, int(self._target_duration_minutes * 60 * 0.2)),
+                )
+                if elapsed_seconds < min_runtime_seconds:
+                    logger.info(
+                        "Ignoring premature end_lecture at %ss (min=%ss)",
+                        elapsed_seconds,
+                        min_runtime_seconds,
+                    )
+                    self._messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": json.dumps(
+                            {
+                                "status": "ignored",
+                                "reason": "lecture_too_early_to_end",
+                                "elapsed_seconds": elapsed_seconds,
+                                "min_runtime_seconds": min_runtime_seconds,
+                            }
+                        ),
+                    })
+                    continue
+
                 stop = True
                 self._end_lecture_called = True
 

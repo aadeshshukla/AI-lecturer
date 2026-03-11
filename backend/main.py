@@ -210,10 +210,13 @@ async def start_lecture(
     except Exception as exc:
         logger.warning("VisionAgent.start() failed (non-fatal): %s", exc)
 
-    try:
-        voice_agent.start_listening()
-    except Exception as exc:
-        logger.warning("VoiceAgent.start_listening() failed (non-fatal): %s", exc)
+    if config.ENABLE_MIC:
+        try:
+            voice_agent.start_listening()
+        except Exception as exc:
+            logger.warning("VoiceAgent.start_listening() failed (non-fatal): %s", exc)
+    else:
+        logger.info("Microphone capture disabled via ENABLE_MIC=false")
 
     try:
         await knowledge_agent.initialize()
@@ -231,6 +234,18 @@ async def start_lecture(
         )
     )
 
+    await ws_hub.broadcast(
+        create_event(
+            "lecture_started",
+            {
+                "session_id": session_id,
+                "topic": body.topic,
+                "duration_minutes": body.duration_minutes,
+                "difficulty": body.difficulty,
+            },
+        )
+    )
+
     logger.info("Lecture started: session=%s topic=%s", session_id, body.topic)
     return {"session_id": session_id, "status": "started"}
 
@@ -244,6 +259,7 @@ async def pause_lecture():
             detail=f"Cannot pause — current status: {lecture_state.status}",
         )
     await lecture_state.update_status("paused")
+    await ws_hub.broadcast(create_event("lecture_paused", {}))
     return {"status": "paused"}
 
 
@@ -256,6 +272,7 @@ async def resume_lecture():
             detail=f"Cannot resume — current status: {lecture_state.status}",
         )
     await lecture_state.update_status("active")
+    await ws_hub.broadcast(create_event("lecture_resumed", {}))
     return {"status": "active"}
 
 
@@ -292,6 +309,8 @@ async def end_lecture(db: Session = Depends(get_db)):
             db_end_session(db, session.id)
         except Exception as exc:
             logger.warning("db_end_session error: %s", exc)
+
+    await ws_hub.broadcast(create_event("lecture_ended", {"session_id": session.id if session else None}))
 
     return {"status": "ended"}
 

@@ -33,12 +33,31 @@ async def write_on_board(
     """
     element_id = str(uuid.uuid4())
     logger.info("[STUB] write_on_board: %s (style=%s, pos=%s)", content, style, position)
-    element = {"id": element_id, "content": content, "style": style, "position": position}
+    if position == "auto":
+        board_index = len(lecture_state.board_elements)
+        normalized_position = {"x": 20, "y": 20 + board_index * 60}
+    else:
+        normalized_position = position
+
+    element = {
+        "id": element_id,
+        "type": style if style in {"heading", "example", "formula"} else "text",
+        "content": content,
+        "style": {"variant": style},
+        "position": normalized_position,
+    }
     await lecture_state.add_board_element(element)
     await ws_hub.broadcast(
         create_event(
             EventType.BOARD_WRITE,
-            {"content": content, "style": style, "position": position, "element_id": element_id},
+            {
+                "id": element_id,
+                "element_id": element_id,
+                "element_type": element["type"],
+                "content": content,
+                "style": element["style"],
+                "position": normalized_position,
+            },
         )
     )
     # TODO PR2: Real Konva canvas command
@@ -75,12 +94,29 @@ async def draw_diagram(diagram_type: str, data: dict) -> dict:
     """
     element_id = str(uuid.uuid4())
     logger.info("[STUB] draw_diagram: type=%s", diagram_type)
-    element = {"id": element_id, "type": "diagram", "diagram_type": diagram_type, "data": data}
+    labels = data.get("labels") if isinstance(data, dict) else None
+    content = labels if isinstance(labels, list) else data
+    element = {
+        "id": element_id,
+        "type": "diagram",
+        "content": content,
+        "style": {"diagram_type": diagram_type},
+        "position": {"x": 20, "y": 20 + len(lecture_state.board_elements) * 70},
+    }
     await lecture_state.add_board_element(element)
     await ws_hub.broadcast(
         create_event(
             EventType.BOARD_DRAW,
-            {"diagram_type": diagram_type, "diagram_data": data, "element_id": element_id},
+            {
+                "id": element_id,
+                "element_id": element_id,
+                "element_type": "diagram",
+                "diagram_type": diagram_type,
+                "content": content,
+                "style": element["style"],
+                "position": element["position"],
+                "diagram_data": data,
+            },
         )
     )
     # TODO PR2: Real diagram rendering

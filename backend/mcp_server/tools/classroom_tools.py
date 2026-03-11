@@ -126,6 +126,9 @@ async def ask_class(question: str) -> dict:
     """
     logger.info("ask_class: %s", question)
     await ws_hub.broadcast(
-        create_event(EventType.STUDENT_SPEECH, {"transcript": question, "from": "professor"})
+        create_event(
+            EventType.STUDENT_SPEECH,
+            {"text": question, "student_id": "professor", "source": "professor"},
+        )
     )
     return {"status": "asked"}
