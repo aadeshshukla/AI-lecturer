@@ -1,6 +1,7 @@
 # AI Autonomous Lecturer 🎓
 
-A **lightweight, demo-friendly AI lecturer** that runs autonomously — no GPU, no PyTorch, no heavy downloads.
+A **lightweight, demo-friendly AI lecturer** that will reform the class room experience
+
 
 The AI delivers a full lecture, speaks out loud through your browser, writes on a virtual whiteboard, advances slides, and responds to student questions — all powered by **Groq's free-tier API** (Llama 3).
 
