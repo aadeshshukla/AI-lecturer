@@ -94,6 +94,5 @@ Speaker: Bluetooth connected to laptop (plays AI voice)
 | `BACKEND_PORT` | `8000` | Server port |
 | `GEMINI_LOOP_INTERVAL_SECONDS` | `3.0` | Seconds between AI loop iterations |
 
-## License
 
-MIT
+
